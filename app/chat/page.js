@@ -12,6 +12,7 @@ const mockConversations = [
 ];
 
 export default function Home() {
+  const [isToggled, setIsToggled] = useState(false)
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [messageInput, setMessageInput] = useState('');
   const [messages, setMessages] = useState({
@@ -35,6 +36,7 @@ export default function Home() {
 
   const handleConversationClick = (conversation) => {
     setSelectedConversation(conversation);
+    setIsToggled(!isToggled)
   };
 
   const handleSendMessage = (e) => {
@@ -68,10 +70,15 @@ export default function Home() {
       </Head>
 
       {/* Sidebar: Conversation List */}
-      <div className="w-1/3 bg-white border-r border-gray-200 overflow-y-auto animate-gradient">
-        <div className="p-4 border-b border-gray-200 flex justify-baseline items-center gap-5 text-white">
-          <img src={'/logo.svg'} width={25}></img>
+      <div className={`${isToggled ? "w-0" : "w-full"} md:w-1/3 bg-white border-r border-gray-200 overflow-hidden animate-gradient`}>
+        <div className="p-4 border-b border-gray-200 flex justify-between items-center gap-5 text-white">
+          <img src={'/logo.svg'} width={25} />
           <h1 className="text-xl font-semibold">Chats</h1>
+          <button className="block md:hidden hover:cursor-pointer" onClick={() => {
+            setIsToggled(!isToggled)
+          }}>
+            <img src={'./menu.svg'}></img>
+          </button>
         </div>
         {mockConversations.map((conversation) => (
           <div
@@ -91,12 +98,17 @@ export default function Home() {
       </div>
 
       {/* Chat Area */}
-      <div className="flex-1 flex flex-col">
+      <div className={`${isToggled ? "w-full" : "w-0"} flex-1 flex flex-col md:w-2/3`}>
         {selectedConversation ? (
           <>
             {/* Chat Header */}
-            <div className="p-4 bg-white border-b border-gray-200">
+            <div className="p-4 bg-white border-b border-gray-200 flex justify-between">
               <h2 className="text-lg font-semibold">{selectedConversation.name}</h2>
+              <button className="block md:hidden hover:cursor-pointer" onClick={() => {
+                setIsToggled(!isToggled)
+              }}>
+                 <img src={'./menu.svg'}></img>
+              </button>
             </div>
 
             {/* Messages */}
@@ -142,7 +154,7 @@ export default function Home() {
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center">
+          <div className="flex-1 flex items-center justify-center opacity-0 md:opacity-1">
             <p className="text-gray-500">Select a conversation to start chatting</p>
           </div>
         )}
@@ -150,3 +162,4 @@ export default function Home() {
     </div>
   );
 }
+
