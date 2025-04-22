@@ -13,6 +13,7 @@ const mockConversations = [
 
 export default function Home() {
   const [isToggled, setIsToggled] = useState(false)
+  const [qrIsVisible, setQrIsVisible] = useState(false)
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [messageInput, setMessageInput] = useState('');
   const [messages, setMessages] = useState({
@@ -62,23 +63,50 @@ export default function Home() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-100">
+    <div className="flex h-screen bg-gray-100 relative">
       <Head>
         <title>Messenger App</title>
         <meta name="description" content="A simple messenger app built with Next.js and Tailwind CSS" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
+      {qrIsVisible ? (
+        <div className='w-40 h-40 md:w-120 md:h-120 top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-transparent-400 rounded-2xl absolute
+        z-100 flex flex-col justify-start items-center bg-white/10 backdrop-blur'>
+          
+            <div className='h-5 md:h-1/10 w-full rounded-2xl bg-transparent flex justify-end p-2 relative'>
+              <button onClick={() => {setQrIsVisible(false)}} className='hover:cursor-pointer'>
+                <img src={'./x.svg'} className='absolute w-5 md:w-9 top-1 right-1 md:top-2 md:right-2'></img>
+              </button>
+            </div>
+          
+
+          <div className='w-full h-28 md:h-8/10 flex items-center justify-center p-2'>
+            <img src={'./qr.png'} className='w-full h-full object-contain'></img>
+          </div>
+        </div>
+      ) : (
+        <div></div>
+      ) }
+
       {/* Sidebar: Conversation List */}
       <div className={`${isToggled ? "w-0" : "w-full"} md:w-1/3 bg-white border-r border-gray-200 overflow-hidden animate-gradient`}>
         <div className="p-4 border-b border-gray-200 flex justify-between items-center gap-5 text-white">
           <img src={'/logo.svg'} width={25} />
           <h1 className="text-xl font-semibold">Chats</h1>
-          <button className="block md:hidden hover:cursor-pointer" onClick={() => {
-            setIsToggled(!isToggled)
-          }}>
-            <img src={'./menu.svg'}></img>
-          </button>
+            <div className='flex justify-center items-center gap-2'>
+
+                {!isToggled ? (  <button className='block hover:cursor-pointer'
+                onClick={() => {setQrIsVisible(true)}}>
+                  <img src={'./qr.svg'}></img>
+                </button>) : (<></>)}
+
+                <button className="block md:hidden hover:cursor-pointer" onClick={() => {
+                  setIsToggled(!isToggled)
+                }}>
+                  <img src={'./menu.svg'}></img>
+                </button>
+            </div>
         </div>
         {mockConversations.map((conversation) => (
           <div
@@ -104,10 +132,11 @@ export default function Home() {
             {/* Chat Header */}
             <div className="p-4 bg-white border-b border-gray-200 flex justify-between">
               <h2 className="text-lg font-semibold">{selectedConversation.name}</h2>
+
               <button className="block md:hidden hover:cursor-pointer" onClick={() => {
                 setIsToggled(!isToggled)
               }}>
-                 <img src={'./menu.svg'}></img>
+                <img src={'./menu.svg'}></img>
               </button>
             </div>
 
@@ -142,13 +171,12 @@ export default function Home() {
                   value={messageInput}
                   onChange={(e) => setMessageInput(e.target.value)}
                   placeholder="Type a message..."
-                  className="flex-1 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="flex-1 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                 />
                 <button
                   type="submit"
                   className="px-4 py-2 bg-[#2FD7A2] text-white rounded-lg hover:bg-[#23B8BD] hover:cursor-pointer"
-                >
-                  Send
+                > Send
                 </button>
               </form>
             </div>
