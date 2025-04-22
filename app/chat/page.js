@@ -71,17 +71,17 @@ export default function Home() {
       </Head>
 
       {qrIsVisible ? (
-        <div className='w-40 h-40 md:w-120 md:h-120 top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-transparent-400 rounded-2xl absolute
-        z-100 flex flex-col justify-start items-center bg-white/10 backdrop-blur'>
+        <div className='w-8/10 h-8/10 md:w-120 md:h-120 top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-transparent-400 rounded-2xl absolute
+        z-100 flex flex-col justify-start items-center bg-white/10 backdrop-blur gap-20'>
           
-            <div className='h-5 md:h-1/10 w-full rounded-2xl bg-transparent flex justify-end p-2 relative'>
-              <button onClick={() => {setQrIsVisible(false)}} className='hover:cursor-pointer'>
-                <img src={'./x.svg'} className='absolute w-5 md:w-9 top-1 right-1 md:top-2 md:right-2'></img>
-              </button>
-            </div>
+          <div className='h-5 md:h-1/10 w-full rounded-2xl bg-transparent flex justify-end p-2 relative'>
+            <button onClick={() => {setQrIsVisible(false)}} className='hover:cursor-pointer'>
+              <img src={'./x.svg'} className='absolute w-5 md:w-9 top-1 right-1 md:top-2 md:right-2'></img>
+            </button>
+          </div>
           
 
-          <div className='w-full h-28 md:h-8/10 flex items-center justify-center p-2'>
+          <div className='w-full h-6/10 md:h-8/10 flex items-center justify-center p-2'>
             <img src={'./qr.png'} className='w-full h-full object-contain'></img>
           </div>
         </div>
@@ -96,10 +96,10 @@ export default function Home() {
           <h1 className="text-xl font-semibold">Chats</h1>
             <div className='flex justify-center items-center gap-2'>
 
-                {!isToggled ? (  <button className='block hover:cursor-pointer'
+                <button className='block hover:cursor-pointer'
                 onClick={() => {setQrIsVisible(true)}}>
                   <img src={'./qr.svg'}></img>
-                </button>) : (<></>)}
+                </button>
 
                 <button className="block md:hidden hover:cursor-pointer" onClick={() => {
                   setIsToggled(!isToggled)
