@@ -218,9 +218,9 @@ export default function Login() {
       
       setDidVerificationComplete(true);
       
-      // Navigate after successful verification
+      // Navigate after successful verification - changed from '/' to '/dashboard'
       await new Promise(resolve => setTimeout(resolve, 1000));
-      router.push('/');
+      router.push('/dashboard');
       
     } catch (err) {
       setError(`DID verification failed: ${err.message || 'Unknown error'}`);

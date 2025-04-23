@@ -7,6 +7,7 @@ import { verifyJWT } from '@decentralized-identity/did-auth-jose';
 import { ethers } from 'ethers';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 
 // Configuration for Ethereum networks
 const providerConfig = {
@@ -19,6 +20,7 @@ const providerConfig = {
 
 // Main Registration component
 export default function Registration() {
+  const router = useRouter(); // Add router for navigation
   const [displayName, setDisplayName] = useState('');
   const [didIdentifier, setDidIdentifier] = useState('');
   const [step, setStep] = useState(1); // Multi-step registration
@@ -105,6 +107,16 @@ export default function Registration() {
     };
     localStorage.setItem('liberaChainIdentity', JSON.stringify(identityData));
   };
+  
+  // Store authentication state in browser's local storage
+  const storeAuthInLocalStorage = (did, expiryTime) => {
+    const authData = {
+      did,
+      expiry: expiryTime,
+      wallet: walletAddress
+    };
+    localStorage.setItem('liberaChainAuth', JSON.stringify(authData));
+  };
 
   // Handle form submission
   const handleSubmit = async (e) => {
@@ -127,8 +139,11 @@ export default function Registration() {
         setLoading(true);
         
         // Store the DID and display name locally
-        // No server-side registration needed
         storeIdentityInLocalStorage();
+        
+        // Also store auth information with 24-hour expiry
+        const expiryTime = Date.now() + (24 * 60 * 60 * 1000);
+        storeAuthInLocalStorage(didIdentifier, expiryTime);
         
         // Move to success step
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -146,6 +161,11 @@ export default function Registration() {
     // This would create the actual on-chain registration of the DID
     // For now, we're using the wallet's address as the DID
     return true;
+  };
+
+  // Navigate to dashboard after short delay
+  const navigateToDashboard = () => {
+    router.push('/dashboard');
   };
 
   return (
@@ -354,10 +374,11 @@ export default function Registration() {
               </div>
 
               <div className="pt-2">
-                <Link href="/" 
+                <button 
+                  onClick={navigateToDashboard}
                   className="inline-flex justify-center rounded-md border border-transparent bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">
                   Go to Dashboard
-                </Link>
+                </button>
               </div>
             </div>
           )}
