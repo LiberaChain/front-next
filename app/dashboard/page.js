@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { searchUserByDid, createFriendRequest, generateAsymmetricKeys, storeMessagingKeys, retrieveMessagingKeys } from '../utils/blockchainTransactions';
+import { QRCodeCanvas } from 'qrcode.react';
+import { Html5Qrcode } from 'html5-qrcode';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -15,7 +17,11 @@ export default function Dashboard() {
   const [searching, setSearching] = useState(false);
   const [friendRequestResult, setFriendRequestResult] = useState(null);
   const [processingRequest, setProcessingRequest] = useState(false);
-
+  const [showQrCode, setShowQrCode] = useState(false);
+  const [showQrScanner, setShowQrScanner] = useState(false);
+  const [scannerInitialized, setScannerInitialized] = useState(false);
+  const scannerRef = useRef(null);
+  
   // Check if user is authenticated on component mount
   useEffect(() => {
     const checkAuth = () => {
@@ -58,6 +64,32 @@ export default function Dashboard() {
     checkAuth();
   }, [router]);
 
+  // Initialize scanner when QR scanner is shown
+  useEffect(() => {
+    if (showQrScanner && !scannerInitialized) {
+      const initScanner = async () => {
+        try {
+          if (scannerRef.current) {
+            const html5QrCode = new Html5Qrcode("qr-reader");
+            scannerRef.current = html5QrCode;
+            setScannerInitialized(true);
+          }
+        } catch (error) {
+          console.error("Error initializing QR scanner:", error);
+        }
+      };
+      
+      initScanner();
+    }
+
+    // Cleanup scanner on unmount
+    return () => {
+      if (scannerRef.current && scannerRef.current.isScanning) {
+        scannerRef.current.stop().catch(console.error);
+      }
+    };
+  }, [showQrScanner, scannerInitialized]);
+
   // Ensure messaging keys exist for the user
   const ensureMessagingKeys = async () => {
     try {
@@ -81,6 +113,39 @@ export default function Dashboard() {
       console.error("Error ensuring messaging keys:", error);
     }
   };
+
+  // Generate QR code URL that works with external scanners
+  const generateQrCodeUrl = (did) => {
+    // If running in a deployed environment, use the actual domain
+    // For development, use localhost
+    // Note: In a production environment, update this with your actual domain
+    const baseUrl = typeof window !== 'undefined' ? 
+      window.location.origin : 
+      'http://localhost:3000';
+    
+    // Create a URL that will open the app and navigate to the dashboard with the DID as a parameter
+    return `${baseUrl}/dashboard?addFriend=${encodeURIComponent(did)}`;
+  };
+
+  // Use URL params if they exist (for QR code navigation)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const friendToAdd = params.get('addFriend');
+      
+      if (friendToAdd) {
+        // Clear the URL parameter to avoid repeated searches on refresh
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+        
+        // Set the search query and trigger search
+        setSearchQuery(friendToAdd);
+        setTimeout(() => {
+          handleSearch();
+        }, 500);
+      }
+    }
+  }, []);
 
   // Handle logout
   const handleLogout = () => {
@@ -138,6 +203,88 @@ export default function Dashboard() {
       setFriendRequestResult({ error: error.message });
     } finally {
       setProcessingRequest(false);
+    }
+  };
+
+  // Start QR code scanning
+  const startQrScanner = async () => {
+    if (!scannerRef.current) return;
+    
+    try {
+      await scannerRef.current.start(
+        { facingMode: "environment" },
+        (decodedText) => {
+          // Handle both direct DID scans and URL-based QR codes
+          let didToSearch = decodedText;
+          
+          // If this is a URL with our addFriend parameter, extract the DID
+          if (decodedText.includes('addFriend=')) {
+            try {
+              const url = new URL(decodedText);
+              const params = new URLSearchParams(url.search);
+              const extractedDid = params.get('addFriend');
+              if (extractedDid) {
+                didToSearch = decodeURIComponent(extractedDid);
+              }
+            } catch (err) {
+              console.error("Failed to parse URL from QR code:", err);
+            }
+          }
+          
+          // Check if the decoded text is a valid DID
+          if (didToSearch && didToSearch.startsWith('did:ethr:')) {
+            // Stop scanning once we've found a valid DID
+            scannerRef.current.stop().then(() => {
+              setShowQrScanner(false);
+              // Set the search query to the scanned DID
+              setSearchQuery(didToSearch);
+              // Automatically search for this DID
+              setTimeout(() => {
+                handleSearch();
+              }, 500);
+            }).catch(console.error);
+          }
+        },
+        (errorMessage) => {
+          console.error("QR Scan error:", errorMessage);
+        }
+      ).catch((err) => {
+        console.error("Failed to start scanning:", err);
+      });
+    } catch (error) {
+      console.error("Error starting QR scanner:", error);
+    }
+  };
+
+  // Stop QR code scanning
+  const stopQrScanner = () => {
+    if (scannerRef.current && scannerRef.current.isScanning) {
+      scannerRef.current.stop().then(() => {
+        console.log("QR Scanner stopped");
+      }).catch(console.error);
+    }
+    setShowQrScanner(false);
+  };
+
+  // Toggle QR Scanner
+  const toggleQrScanner = () => {
+    if (showQrScanner) {
+      stopQrScanner();
+    } else {
+      setShowQrScanner(true);
+      setShowQrCode(false);
+      // We'll start scanning after the component is rendered
+      setTimeout(() => {
+        startQrScanner();
+      }, 500);
+    }
+  };
+
+  // Toggle QR Code
+  const toggleQrCode = () => {
+    setShowQrCode(!showQrCode);
+    if (showQrScanner) {
+      stopQrScanner();
     }
   };
 
@@ -207,10 +354,37 @@ export default function Dashboard() {
               </div>
               
               <div className="mt-6">
-                <h3 className="text-sm font-medium text-gray-300">Your DID</h3>
+                <div className="flex justify-between items-center">
+                  <h3 className="text-sm font-medium text-gray-300">Your DID</h3>
+                  <button 
+                    onClick={toggleQrCode}
+                    className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+                    </svg>
+                    {showQrCode ? "Hide QR" : "Show QR"}
+                  </button>
+                </div>
                 <div className="mt-1 bg-gray-700 rounded-md p-2">
                   <code className="text-xs text-emerald-400 break-all">{profileData?.did || "Not available"}</code>
                 </div>
+                
+                {showQrCode && profileData?.did && (
+                  <div className="mt-4 flex justify-center flex-col items-center">
+                    <div className="bg-white p-4 rounded-lg">
+                      <QRCodeCanvas 
+                        value={generateQrCodeUrl(profileData.did)} 
+                        size={200}
+                        level="H"
+                        includeMargin={true}
+                      />
+                    </div>
+                    <p className="mt-2 text-xs text-gray-400">
+                      Scan with any camera app to add as friend
+                    </p>
+                  </div>
+                )}
               </div>
               
               <div className="mt-4">
@@ -320,10 +494,38 @@ export default function Dashboard() {
                   <>Search</>
                 )}
               </button>
+              <button
+                className="inline-flex items-center px-4 py-2 border border-gray-500 text-sm font-medium rounded-md text-white bg-gray-700 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+                onClick={toggleQrScanner}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M3 4a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm2 2V5h1v1H5zM3 13a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1H4a1 1 0 01-1-1v-3zm2 2v-1h1v1H5zM13 3a1 1 0 00-1 1v3a1 1 0 001 1h3a1 1 0 001-1V4a1 1 0 00-1-1h-3zm1 2v1h1V5h-1z" />
+                </svg>
+                {showQrScanner ? 'Stop Scanning' : 'Scan QR Code'}
+              </button>
             </div>
             
+            {/* QR Scanner */}
+            {showQrScanner && (
+              <div className="mt-4 bg-gray-700 rounded-lg p-4">
+                <h3 className="text-md font-medium text-white mb-2">Scan Friend's QR Code</h3>
+                <p className="text-sm text-gray-400 mb-4">
+                  Point your camera at your friend's QR code to add them
+                </p>
+                <div id="qr-reader" className="w-full max-w-sm mx-auto bg-white rounded-lg overflow-hidden"></div>
+                <div className="flex justify-center mt-4">
+                  <button 
+                    onClick={stopQrScanner}
+                    className="text-sm text-red-400 hover:text-red-300"
+                  >
+                    Cancel Scanning
+                  </button>
+                </div>
+              </div>
+            )}
+            
             {/* Search Results */}
-            {searchResult && (
+            {searchResult && !showQrScanner && (
               <div className="mt-4 p-4 rounded-md bg-gray-700">
                 {searchResult.found ? (
                   <div>
