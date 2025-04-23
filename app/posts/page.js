@@ -424,7 +424,7 @@ export default function PostsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 pb-10">
+    <div className="animate-gradient min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 pb-10">
       {/* Header */}
       <div className="bg-gray-800 border-b border-gray-700 mb-6 px-4 py-4">
         <div className="container mx-auto flex justify-between items-center">

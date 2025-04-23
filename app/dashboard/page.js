@@ -34,6 +34,8 @@ export default function Dashboard() {
   const [savingUsername, setSavingUsername] = useState(false);
   const [usernameSuccess, setUsernameSuccess] = useState(false);
   const [usernameError, setUsernameError] = useState(null);
+  const [friendsList, setFriendsList] = useState([]);
+  const [loadingFriends, setLoadingFriends] = useState(true);
   const scannerRef = useRef(null);
   
   // Check if user is authenticated on component mount
@@ -366,6 +368,70 @@ export default function Dashboard() {
     }
   };
 
+  // Load user's friends from localStorage
+  const loadFriends = async () => {
+    try {
+      setLoadingFriends(true);
+      
+      if (!profileData || !profileData.did) {
+        setFriendsList([]);
+        return;
+      }
+      
+      // Get friendships from localStorage
+      const friendships = JSON.parse(localStorage.getItem('liberaChainFriendships') || '{}');
+      const userFriends = friendships[profileData.did] || [];
+      
+      console.log("User friends DIDs:", userFriends);
+      
+      // For each friend DID, get their profile information
+      const friendsData = await Promise.all(
+        userFriends.map(async (did) => {
+          // First try to get from IPFS
+          const ipfsProfile = await getUserProfileFromIPFS(did);
+          
+          // If we have IPFS data, use that
+          if (ipfsProfile && ipfsProfile.username) {
+            return {
+              did: did,
+              displayName: ipfsProfile.username
+            };
+          }
+          
+          // Otherwise, search for user by DID (this is a fallback)
+          const userInfo = await searchUserByDid(did);
+          if (userInfo && userInfo.found) {
+            return {
+              did: did,
+              displayName: userInfo.displayName
+            };
+          }
+          
+          // If all else fails, return minimal info
+          return {
+            did: did,
+            displayName: `User-${did.substring(9, 13)}` // Extract part of the DID as a minimal identifier
+          };
+        })
+      );
+      
+      console.log("Loaded friends data:", friendsData);
+      setFriendsList(friendsData);
+    } catch (error) {
+      console.error("Error loading friends:", error);
+      setFriendsList([]);
+    } finally {
+      setLoadingFriends(false);
+    }
+  };
+
+  // Load friends when profile data changes
+  useEffect(() => {
+    if (profileData && profileData.did) {
+      loadFriends();
+    }
+  }, [profileData]);
+
   // Show loading state
   if (loading) {
     return (
@@ -646,6 +712,52 @@ export default function Dashboard() {
             </div>
           </div>
           
+          {/* My Friends Section */}
+          <div className="mt-8 bg-gray-800 rounded-lg shadow p-6 border border-gray-700">
+            <h2 className="text-lg font-medium text-white">My Friends</h2>
+            <p className="mt-1 text-sm text-gray-400">
+              List of your friends for secure encrypted messaging
+            </p>
+            
+            {loadingFriends ? (
+              <div className="mt-4 text-center">
+                <svg className="animate-spin h-5 w-5 text-emerald-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <p className="mt-2 text-sm text-gray-300">Loading friends...</p>
+              </div>
+            ) : (
+              <div className="mt-4">
+                {friendsList.length > 0 ? (
+                  <ul className="space-y-4">
+                    {friendsList.map((friend) => (
+                      <li key={friend.did} className="bg-gray-700 rounded-md p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="text-md font-medium text-emerald-400">{friend.displayName}</h3>
+                            <p className="text-xs text-gray-400 break-all">{friend.did}</p>
+                          </div>
+                          <Link 
+                            href={`/chat/${friend.did}`}
+                            className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                          >
+                            Message
+                          </Link>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="text-center py-2">
+                    <p className="text-gray-400">You have no friends added yet</p>
+                    <p className="text-xs text-gray-400 mt-1">Search for users by their DID to add them as friends</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Friend Request Section */}
           <div className="mt-8 bg-gray-800 rounded-lg shadow p-6 border border-gray-700">
             <h2 className="text-lg font-medium text-white">Add Friend</h2>
