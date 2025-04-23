@@ -23,6 +23,195 @@ const hasIpfsCredentials = () => {
 };
 
 /**
+ * Initialize demo mock posts if none exist
+ * This is called when the app loads to ensure there's content to display
+ */
+export const initializeMockPosts = () => {
+  try {
+    // Check if we already have posts
+    const postRegistry = JSON.parse(localStorage.getItem('liberaChainPostRegistry') || '{}');
+    const postsMap = JSON.parse(localStorage.getItem('liberaChainIpfsPosts') || '{}');
+    const userPosts = JSON.parse(localStorage.getItem('liberaChainUserPosts') || '{}');
+    
+    // If we already have posts, don't add mock data
+    if (Object.keys(postRegistry).length > 0) {
+      return;
+    }
+    
+    console.log('Initializing mock posts for demo purposes');
+    
+    // Create demo DIDs for mock users
+    const mockUsers = [
+      {
+        did: 'did:ethr:0x1234MockUser1',
+        displayName: 'Alex Chen',
+        wallet: '0x1234MockWallet1'
+      },
+      {
+        did: 'did:ethr:0x5678MockUser2',
+        displayName: 'Maria Santos',
+        wallet: '0x5678MockWallet2'
+      },
+      {
+        did: 'did:ethr:0x9012MockUser3',
+        displayName: 'Jamal Washington',
+        wallet: '0x9012MockWallet3'
+      }
+    ];
+    
+    // Create mock posts
+    const mockPosts = [
+      {
+        title: 'Welcome to LiberaChain',
+        content: 'This is the first post on LiberaChain, a decentralized social platform built with privacy in mind. All content is stored on IPFS, giving you true ownership of your data.\n\nFeel free to explore and create your own posts!',
+        authorDid: mockUsers[0].did,
+        authorName: mockUsers[0].displayName,
+        timestamp: Date.now() - 7 * 24 * 60 * 60 * 1000, // 7 days ago
+        visibility: 'public'
+      },
+      {
+        title: 'Web3 Identity and Data Sovereignty',
+        content: 'The future of digital identity is decentralized. With DIDs (Decentralized Identifiers), users can control their own identity without relying on centralized providers.\n\nWhat are your thoughts on data sovereignty and Web3 identity solutions?',
+        authorDid: mockUsers[1].did,
+        authorName: mockUsers[1].displayName,
+        timestamp: Date.now() - 5 * 24 * 60 * 60 * 1000, // 5 days ago
+        visibility: 'public'
+      },
+      {
+        title: 'IPFS: The Backbone of Web3 Storage',
+        content: 'IPFS (InterPlanetary File System) is revolutionizing how we think about storing and sharing data online. Instead of location-based addressing, IPFS uses content-based addressing.\n\nEvery file gets a unique hash (CID) based on its content, making it resistant to censorship and permanent.',
+        authorDid: mockUsers[2].did,
+        authorName: mockUsers[2].displayName,
+        timestamp: Date.now() - 3 * 24 * 60 * 60 * 1000, // 3 days ago
+        visibility: 'public'
+      },
+      {
+        type: 'imported',
+        title: 'Check out this article on Web3 privacy',
+        content: 'This is a great overview of current privacy challenges in Web3 and how zero-knowledge proofs might help solve them.',
+        url: 'https://ethereum.org/en/zero-knowledge-proofs/',
+        source: 'ethereum',
+        authorDid: mockUsers[1].did,
+        authorName: mockUsers[1].displayName,
+        timestamp: Date.now() - 2 * 24 * 60 * 60 * 1000, // 2 days ago
+        visibility: 'public',
+        metadata: {
+          url: 'https://ethereum.org/en/zero-knowledge-proofs/',
+          source: 'ethereum',
+          extracted: true,
+          timestamp: Date.now() - 2 * 24 * 60 * 60 * 1000
+        }
+      },
+      {
+        title: 'Friends-only content sharing',
+        content: 'This is a private post that should only be visible to my friends. LiberaChain makes it easy to control who sees your content.\n\nWith the friend-only option, you can share thoughts privately with your connections while keeping the benefits of decentralized storage.',
+        authorDid: mockUsers[0].did,
+        authorName: mockUsers[0].displayName,
+        timestamp: Date.now() - 1 * 24 * 60 * 60 * 1000, // 1 day ago
+        visibility: 'friends-only'
+      }
+    ];
+    
+    // Store mock posts in localStorage
+    mockPosts.forEach((post, index) => {
+      const mockCid = `mock-demo-post-cid-${index}`;
+      
+      // Add to posts map
+      postsMap[mockCid] = post;
+      
+      // Add to post registry
+      postRegistry[mockCid] = {
+        authorDid: post.authorDid,
+        authorName: post.authorName,
+        visibility: post.visibility,
+        type: post.type || 'regular',
+        url: post.url,
+        source: post.source,
+        timestamp: post.timestamp,
+        contentPreview: post.content.substring(0, 100) + (post.content.length > 100 ? '...' : '')
+      };
+      
+      // Add to user posts list
+      if (!userPosts[post.authorDid]) {
+        userPosts[post.authorDid] = [];
+      }
+      userPosts[post.authorDid].push(mockCid);
+    });
+    
+    // Save everything to localStorage
+    localStorage.setItem('liberaChainIpfsPosts', JSON.stringify(postsMap));
+    localStorage.setItem('liberaChainPostRegistry', JSON.stringify(postRegistry));
+    localStorage.setItem('liberaChainUserPosts', JSON.stringify(userPosts));
+    
+    // Setup some mock friendships so we can demo the comments
+    const friendships = JSON.parse(localStorage.getItem('liberaChainFriendships') || '{}');
+    
+    // Make all demo users friends with each other
+    mockUsers.forEach(user => {
+      if (!friendships[user.did]) {
+        friendships[user.did] = [];
+      }
+      mockUsers.forEach(friend => {
+        if (user.did !== friend.did && !friendships[user.did].includes(friend.did)) {
+          friendships[user.did].push(friend.did);
+        }
+      });
+    });
+    
+    localStorage.setItem('liberaChainFriendships', JSON.stringify(friendships));
+    
+    // Add mock comments to a couple posts
+    const postComments = {};
+    
+    // Comments for first post
+    postComments['mock-demo-post-cid-0'] = [
+      {
+        id: 'comment-mock-1',
+        authorDid: mockUsers[1].did,
+        authorName: mockUsers[1].displayName,
+        content: 'This is exactly what we need - decentralized social media where users control their data!',
+        timestamp: Date.now() - 6 * 24 * 60 * 60 * 1000,
+        edited: false
+      },
+      {
+        id: 'comment-mock-2',
+        authorDid: mockUsers[2].did,
+        authorName: mockUsers[2].displayName,
+        content: 'Looking forward to seeing this platform grow. Web3 social media is the future.',
+        timestamp: Date.now() - 5.5 * 24 * 60 * 60 * 1000,
+        edited: false
+      }
+    ];
+    
+    // Comments for second post
+    postComments['mock-demo-post-cid-1'] = [
+      {
+        id: 'comment-mock-3',
+        authorDid: mockUsers[0].did,
+        authorName: mockUsers[0].displayName,
+        content: 'I think DIDs are going to be essential for future online interactions. They solve so many identity problems!',
+        timestamp: Date.now() - 4 * 24 * 60 * 60 * 1000,
+        edited: false
+      },
+      {
+        id: 'comment-mock-4',
+        authorDid: mockUsers[2].did,
+        authorName: mockUsers[2].displayName,
+        content: 'Data sovereignty is the most important aspect of Web3. Users should own their data, not corporations.',
+        timestamp: Date.now() - 3.5 * 24 * 60 * 60 * 1000,
+        edited: false
+      }
+    ];
+    
+    localStorage.setItem('liberaChainPostComments', JSON.stringify(postComments));
+    
+    console.log('Mock posts initialized successfully');
+  } catch (error) {
+    console.error('Error initializing mock posts:', error);
+  }
+};
+
+/**
  * Upload a post to IPFS
  * @param {Object} postData - Post data to upload
  * @returns {Promise<string|null>} IPFS CID (Content ID) or null if upload failed
@@ -359,6 +548,155 @@ export const createImportedPost = async (data, authorInfo) => {
     };
   } catch (error) {
     console.error('Error creating imported post:', error);
+    throw error;
+  }
+};
+
+/**
+ * Add a comment to a post
+ * @param {string} postCid - CID of the post being commented on
+ * @param {Object} commentData - Comment data including author info and content
+ * @returns {Promise<Object>} Result object with success status and new comment info
+ */
+export const addCommentToPost = async (postCid, commentData) => {
+  try {
+    if (!postCid) throw new Error('Post CID is required');
+    if (!commentData.authorDid) throw new Error('Comment author DID is required');
+    if (!commentData.content) throw new Error('Comment content is required');
+    
+    // Generate a unique ID for the comment
+    const commentId = `comment-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+    
+    // Create the comment object
+    const comment = {
+      id: commentId,
+      authorDid: commentData.authorDid,
+      authorName: commentData.authorName,
+      content: commentData.content,
+      timestamp: Date.now(),
+      parentCommentId: commentData.parentCommentId || null, // For threaded comments
+      edited: false
+    };
+    
+    // Get the existing comments for this post
+    const postComments = JSON.parse(localStorage.getItem('liberaChainPostComments') || '{}');
+    
+    // Initialize if this is the first comment for the post
+    if (!postComments[postCid]) {
+      postComments[postCid] = [];
+    }
+    
+    // Add the new comment
+    postComments[postCid].push(comment);
+    
+    // Save back to storage
+    localStorage.setItem('liberaChainPostComments', JSON.stringify(postComments));
+    
+    // In a production system, we would also update an on-chain record or IPFS
+    // to ensure comments are decentralized as well
+    
+    return {
+      success: true,
+      comment,
+      postCid
+    };
+  } catch (error) {
+    console.error('Error adding comment:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get comments for a specific post
+ * @param {string} postCid - CID of the post
+ * @returns {Array} Array of comments for the post
+ */
+export const getPostComments = (postCid) => {
+  try {
+    if (!postCid) return [];
+    
+    // Get all comments from storage
+    const postComments = JSON.parse(localStorage.getItem('liberaChainPostComments') || '{}');
+    
+    // Get comments for this specific post
+    const comments = postComments[postCid] || [];
+    
+    // Sort by timestamp (oldest first, for chronological display)
+    return comments.sort((a, b) => a.timestamp - b.timestamp);
+  } catch (error) {
+    console.error('Error getting post comments:', error);
+    return [];
+  }
+};
+
+/**
+ * Check if a user is a friend of another user
+ * @param {string} userDid - DID of the user to check
+ * @param {string} targetDid - DID of the potential friend
+ * @returns {boolean} Whether the users are friends
+ */
+export const checkFriendship = (userDid, targetDid) => {
+  try {
+    // If same user, return true (you can comment on your own posts)
+    if (userDid === targetDid) return true;
+    
+    // For this implementation, we'll use a simple friendships map in localStorage
+    // In a production app, this would be stored on-chain or through a verifiable credential system
+    const friendships = JSON.parse(localStorage.getItem('liberaChainFriendships') || '{}');
+    
+    // Check if userDid has targetDid as a friend
+    const userFriends = friendships[userDid] || [];
+    return userFriends.includes(targetDid);
+  } catch (error) {
+    console.error('Error checking friendship:', error);
+    return false;
+  }
+};
+
+/**
+ * Delete a comment from a post
+ * @param {string} postCid - CID of the post
+ * @param {string} commentId - ID of the comment to delete
+ * @param {string} userDid - DID of the user attempting to delete the comment
+ * @returns {Promise<Object>} Result object with success status
+ */
+export const deleteComment = async (postCid, commentId, userDid) => {
+  try {
+    if (!postCid) throw new Error('Post CID is required');
+    if (!commentId) throw new Error('Comment ID is required');
+    if (!userDid) throw new Error('User DID is required');
+    
+    // Get the existing comments for this post
+    const postComments = JSON.parse(localStorage.getItem('liberaChainPostComments') || '{}');
+    
+    // Check if there are comments for this post
+    if (!postComments[postCid]) {
+      throw new Error('No comments found for this post');
+    }
+    
+    // Find the comment
+    const commentIndex = postComments[postCid].findIndex(comment => comment.id === commentId);
+    
+    if (commentIndex === -1) {
+      throw new Error('Comment not found');
+    }
+    
+    // Check if the user is the author of the comment
+    if (postComments[postCid][commentIndex].authorDid !== userDid) {
+      throw new Error('You can only delete your own comments');
+    }
+    
+    // Remove the comment
+    postComments[postCid].splice(commentIndex, 1);
+    
+    // Save back to storage
+    localStorage.setItem('liberaChainPostComments', JSON.stringify(postComments));
+    
+    return {
+      success: true
+    };
+  } catch (error) {
+    console.error('Error deleting comment:', error);
     throw error;
   }
 };
