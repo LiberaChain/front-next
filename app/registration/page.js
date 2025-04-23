@@ -8,15 +8,12 @@ import { ethers } from 'ethers';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-
-// Configuration for Ethereum networks
-const providerConfig = {
-  // Public RPC endpoint - no central authority
-  rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com', // Sepolia testnet for development
-  name: 'sepolia',
-  chainId: '0x5',
-  registry: '0xdca7ef03e98e0dc2b855be647c39abe984fcf21b' // Registry address for sepolia
-};
+import { 
+  providerConfig, 
+  generateAsymmetricKeys, 
+  registerPublicKeyOnChain, 
+  storeMessagingKeys 
+} from '../utils/blockchainTransactions';
 
 // Main Registration component
 export default function Registration() {
@@ -31,6 +28,7 @@ export default function Registration() {
   const [walletAddress, setWalletAddress] = useState('');
   const [ethersProvider, setEthersProvider] = useState(null);
   const [didResolver, setDidResolver] = useState(null);
+  const [keyPair, setKeyPair] = useState(null);
   
   // Initialize DID resolver and ethers provider
   useEffect(() => {
@@ -84,6 +82,11 @@ export default function Registration() {
         setIsWalletConnected(true);
         setDidCreated(true);
         console.log('Wallet connected. DID:', did);
+        
+        // Generate asymmetric keys for secure messaging using our utility function
+        const keys = await generateAsymmetricKeys();
+        setKeyPair(keys);
+        console.log('Messaging key pair generated:', keys.address);
       }
     } catch (err) {
       setError(`Failed to connect wallet: ${err.message || 'Unknown error'}`);
@@ -105,6 +108,16 @@ export default function Registration() {
       wallet: walletAddress,
       createdAt: new Date().toISOString()
     };
+    
+    // If we have generated keys, store them using our utility function
+    if (keyPair) {
+      // Store the messaging keys
+      storeMessagingKeys(keyPair.privateKey, keyPair.publicKey, keyPair.address);
+      
+      // Add the messaging key address to the identity data
+      identityData.messagingKeyAddress = keyPair.address;
+    }
+    
     localStorage.setItem('liberaChainIdentity', JSON.stringify(identityData));
   };
   
@@ -138,6 +151,18 @@ export default function Registration() {
       try {
         setLoading(true);
         
+        // If we have a key pair, register the public key on the blockchain
+        if (keyPair) {
+          // Get signer for blockchain transaction
+          const provider = new ethers.BrowserProvider(window.ethereum);
+          const signer = await provider.getSigner();
+          
+          // Register the public key on the blockchain using our utility function
+          await registerPublicKeyOnChain(signer, keyPair.publicKey);
+        } else {
+          throw new Error('Communication keys were not generated properly');
+        }
+        
         // Store the DID and display name locally
         storeIdentityInLocalStorage();
         
@@ -150,17 +175,10 @@ export default function Registration() {
         setLoading(false);
         setStep(3);
       } catch (err) {
-        setError('Registration failed. Please try again.');
+        setError(`Registration failed: ${err.message || 'Please try again.'}`);
         setLoading(false);
       }
     }
-  };
-
-  // Register a new DID document on-chain (in a real implementation)
-  const registerDidOnChain = async () => {
-    // This would create the actual on-chain registration of the DID
-    // For now, we're using the wallet's address as the DID
-    return true;
   };
 
   // Navigate to dashboard after short delay
@@ -209,7 +227,8 @@ export default function Registration() {
                 <ul className="list-disc pl-5 space-y-1 text-xs text-gray-300">
                   <li>Connect your Ethereum wallet (like MetaMask)</li>
                   <li>Your wallet address generates your unique DID</li>
-                  <li>You control your identity with your private key</li>
+                  <li>Secure messaging keys are created for encrypted communication</li>
+                  <li>Your public key is stored on-chain and private key in your wallet</li>
                   <li>No central database storing your personal data</li>
                 </ul>
               </div>
@@ -279,6 +298,19 @@ export default function Registration() {
                       </p>
                     </div>
                   </div>
+                  
+                  {keyPair && (
+                    <div className="rounded-md bg-gray-700 p-4">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium text-gray-300">Messaging Key Generated:</span>
+                        <code className="mt-1 text-xs text-emerald-400 break-all">{keyPair.address}</code>
+                        <p className="mt-2 text-xs text-gray-400">
+                          A secure messaging key pair has been generated. Your public key will be stored on-chain, 
+                          and your private key will be securely stored in your local wallet.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   
                   <div>
                     <label htmlFor="displayName" className="block text-sm font-medium text-gray-300">
@@ -364,9 +396,16 @@ export default function Registration() {
                   <span className="mt-2 text-sm font-medium text-gray-300">DID:</span>
                   <code className="text-xs text-emerald-400 break-all">{didIdentifier}</code>
                   
+                  {keyPair && (
+                    <>
+                      <span className="mt-2 text-sm font-medium text-gray-300">Messaging Address:</span>
+                      <code className="text-xs text-emerald-400 break-all">{keyPair.address}</code>
+                    </>
+                  )}
+                  
                   <div className="mt-4 rounded-md bg-blue-900/30 p-2">
                     <p className="text-xs text-blue-300">
-                      <strong>Important:</strong> Your identity is controlled by your private key in your wallet. 
+                      <strong>Important:</strong> Your identity and messaging keys are controlled by your private keys. 
                       Make sure you have backed up your wallet recovery phrase securely!
                     </p>
                   </div>

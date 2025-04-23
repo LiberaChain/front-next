@@ -4,11 +4,17 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { searchUserByDid, createFriendRequest, generateAsymmetricKeys, storeMessagingKeys, retrieveMessagingKeys } from '../utils/blockchainTransactions';
 
 export default function Dashboard() {
   const router = useRouter();
   const [profileData, setProfileData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResult, setSearchResult] = useState(null);
+  const [searching, setSearching] = useState(false);
+  const [friendRequestResult, setFriendRequestResult] = useState(null);
+  const [processingRequest, setProcessingRequest] = useState(false);
 
   // Check if user is authenticated on component mount
   useEffect(() => {
@@ -38,6 +44,9 @@ export default function Dashboard() {
         if (profileData) {
           setProfileData(JSON.parse(profileData));
         }
+
+        // Ensure messaging keys exist
+        ensureMessagingKeys();
       } catch (err) {
         console.error("Error checking authentication:", err);
         router.push('/login');
@@ -49,12 +58,87 @@ export default function Dashboard() {
     checkAuth();
   }, [router]);
 
+  // Ensure messaging keys exist for the user
+  const ensureMessagingKeys = async () => {
+    try {
+      // Check if keys already exist
+      const existingKeys = retrieveMessagingKeys();
+      if (existingKeys) {
+        console.log("Messaging keys already exist");
+        return;
+      }
+
+      // Generate new keys if they don't exist
+      const keys = await generateAsymmetricKeys();
+      storeMessagingKeys(keys.privateKey, keys.publicKey, keys.address);
+      
+      // Update profile data with messaging key address
+      const updatedProfileData = JSON.parse(localStorage.getItem('liberaChainIdentity') || '{}');
+      setProfileData(updatedProfileData);
+      
+      console.log("Generated and stored new messaging keys");
+    } catch (error) {
+      console.error("Error ensuring messaging keys:", error);
+    }
+  };
+
   // Handle logout
   const handleLogout = () => {
     // Clear authentication data
     localStorage.removeItem('liberaChainAuth');
     // Redirect to home
     router.push('/');
+  };
+
+  // Handle search for user by DID
+  const handleSearch = async () => {
+    if (!searchQuery || !searchQuery.trim()) return;
+    
+    try {
+      setSearching(true);
+      setSearchResult(null);
+      
+      // Format the query as a DID if it's not already
+      const formattedQuery = searchQuery.startsWith('did:ethr:') 
+        ? searchQuery 
+        : `did:ethr:${searchQuery}`;
+      
+      // Search for user by DID
+      const result = await searchUserByDid(formattedQuery);
+      setSearchResult(result);
+      
+      if (!result) {
+        console.log("User not found with DID:", formattedQuery);
+      }
+    } catch (error) {
+      console.error("Error searching for user:", error);
+      setSearchResult({ error: "Error searching for user" });
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  // Handle friend request
+  const handleFriendRequest = async () => {
+    if (!searchResult || !searchResult.found) return;
+    
+    try {
+      setProcessingRequest(true);
+      
+      // Create friend request with encrypted symmetric key
+      const result = await createFriendRequest(searchResult.did, searchResult.publicKey);
+      
+      // Log the result to console for copying
+      console.log("Friend request data (copy this):", JSON.stringify(result, null, 2));
+      
+      // Set the result for display
+      setFriendRequestResult(result);
+    } catch (error) {
+      console.error("Error creating friend request:", error);
+      setFriendRequestResult({ error: error.message });
+    } finally {
+      setProcessingRequest(false);
+    }
   };
 
   // Show loading state
@@ -201,6 +285,117 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
+          </div>
+          
+          {/* Friend Request Section */}
+          <div className="mt-8 bg-gray-800 rounded-lg shadow p-6 border border-gray-700">
+            <h2 className="text-lg font-medium text-white">Add Friend</h2>
+            <p className="mt-1 text-sm text-gray-400">
+              Search for other users by their DID and add them as friends for secure encrypted messaging
+            </p>
+            
+            <div className="mt-4 flex space-x-2">
+              <input
+                type="text"
+                className="flex-1 bg-gray-700 rounded-md border border-gray-600 p-2 text-white text-sm focus:ring-emerald-500 focus:border-emerald-500"
+                placeholder="Enter DID (did:ethr:0x...)"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+              />
+              <button
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
+                onClick={handleSearch}
+                disabled={searching || !searchQuery.trim()}
+              >
+                {searching ? (
+                  <>
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Searching...
+                  </>
+                ) : (
+                  <>Search</>
+                )}
+              </button>
+            </div>
+            
+            {/* Search Results */}
+            {searchResult && (
+              <div className="mt-4 p-4 rounded-md bg-gray-700">
+                {searchResult.found ? (
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-md font-medium text-emerald-400">{searchResult.displayName}</h3>
+                        <p className="text-xs text-gray-400 break-all">{searchResult.did}</p>
+                      </div>
+                      <button
+                        className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        onClick={handleFriendRequest}
+                        disabled={processingRequest}
+                      >
+                        {processingRequest ? (
+                          <>
+                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Processing...
+                          </>
+                        ) : (
+                          <>Send Friend Request</>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-2">
+                    <p className="text-red-400">User not found with this DID</p>
+                    <p className="text-xs text-gray-400 mt-1">Make sure the DID is correct and try again</p>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Friend Request Result */}
+            {friendRequestResult && !friendRequestResult.error && (
+              <div className="mt-4 p-4 rounded-md bg-green-900/20 border border-green-800">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-md font-medium text-emerald-400">Friend Request Created!</h3>
+                  <span className="text-xs text-gray-400">
+                    {new Date(friendRequestResult.timestamp).toLocaleString()}
+                  </span>
+                </div>
+                <p className="text-sm text-gray-300 mt-2">
+                  Friend request with encrypted symmetric key has been generated. Check your browser console to copy the data.
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  <span className="font-medium">From:</span> {friendRequestResult.from}
+                </p>
+                <p className="text-xs text-gray-400">
+                  <span className="font-medium">To:</span> {friendRequestResult.to}
+                </p>
+                <div className="mt-2">
+                  <button
+                    className="text-xs text-blue-400 hover:text-blue-300"
+                    onClick={() => console.log("Friend request data:", JSON.stringify(friendRequestResult, null, 2))}
+                  >
+                    Print data to console again
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            {/* Friend Request Error */}
+            {friendRequestResult && friendRequestResult.error && (
+              <div className="mt-4 p-4 rounded-md bg-red-900/20 border border-red-800">
+                <h3 className="text-md font-medium text-red-400">Error Creating Friend Request</h3>
+                <p className="text-sm text-gray-300 mt-1">{friendRequestResult.error}</p>
+              </div>
+            )}
           </div>
         </div>
       </main>
