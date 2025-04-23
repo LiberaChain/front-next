@@ -40,7 +40,8 @@ export default function Registration() {
         console.log('DID resolver initialized successfully');
         
         // Initialize ethers provider - connecting directly to public node
-        const provider = new ethers.providers.JsonRpcProvider(providerConfig.rpcUrl);
+        // Updated to use new ethers provider syntax
+        const provider = new ethers.JsonRpcProvider(providerConfig.rpcUrl);
         setEthersProvider(provider);
         console.log('Ethers provider initialized successfully');
       } catch (err) {
@@ -65,10 +66,12 @@ export default function Registration() {
       }
 
       // Connect directly to the user's wallet - no intermediary server
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      // Updated to use new ethers BrowserProvider syntax
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      
       // Request account access from user's wallet
-      await provider.send("eth_requestAccounts", []);
-      const signer = provider.getSigner();
+      const accounts = await provider.send("eth_requestAccounts", []);
+      const signer = await provider.getSigner();
       const address = await signer.getAddress();
       
       if (address) {
@@ -146,7 +149,7 @@ export default function Registration() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="animate-gradient min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
           <Image src="/logo.svg" alt="LiberaChain Logo" width={80} height={80} className="mx-auto" />
@@ -154,7 +157,7 @@ export default function Registration() {
         <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-white">
           Create your decentralized identity
         </h2>
-        <p className="mt-2 text-center text-sm text-gray-400">
+        <p className="mt-2 text-center text-sm text-gray-100">
           Join the decentralized web with your own sovereign identity
         </p>
       </div>

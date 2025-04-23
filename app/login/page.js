@@ -32,6 +32,7 @@ export default function Login() {
   const [walletAddress, setWalletAddress] = useState('');
   const [signedMessage, setSignedMessage] = useState('');
   const [didResolver, setDidResolver] = useState(null);
+  const [isUserRegistered, setIsUserRegistered] = useState(true); // Default to true, will check during connection
   
   // Initialize DID resolver and ethers provider
   useEffect(() => {
@@ -43,7 +44,8 @@ export default function Login() {
         console.log('DID resolver initialized successfully');
         
         // Initialize ethers provider - connecting directly to public node
-        const provider = new ethers.providers.JsonRpcProvider(providerConfig.rpcUrl);
+        // Updated to use new ethers provider syntax
+        const provider = new ethers.JsonRpcProvider(providerConfig.rpcUrl);
         setEthersProvider(provider);
         console.log('Ethers provider initialized successfully');
       } catch (err) {
@@ -63,6 +65,24 @@ export default function Login() {
     }
   }, [didVerification, didChallenge]);
 
+  // Check if user is registered
+  const checkUserRegistration = (address) => {
+    try {
+      // Check if there's a stored identity for this user
+      const storedIdentity = localStorage.getItem('liberaChainIdentity');
+      if (!storedIdentity) {
+        return false;
+      }
+      
+      const identity = JSON.parse(storedIdentity);
+      // Check if the wallet address matches
+      return identity.wallet && identity.wallet.toLowerCase() === address.toLowerCase();
+    } catch (err) {
+      console.error("Error checking user registration:", err);
+      return false;
+    }
+  };
+
   // Connect to Ethereum wallet
   const connectWallet = async () => {
     try {
@@ -77,10 +97,12 @@ export default function Login() {
       }
 
       // Connect directly to the user's wallet - no intermediary server
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      // Updated to use new ethers Web3Provider syntax
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      
       // Request account access from user's wallet
-      await provider.send("eth_requestAccounts", []);
-      const signer = provider.getSigner();
+      const accounts = await provider.send("eth_requestAccounts", []);
+      const signer = await provider.getSigner();
       const address = await signer.getAddress();
       
       if (address) {
@@ -90,6 +112,21 @@ export default function Login() {
         setWalletAddress(address);
         setIsWalletConnected(true);
         console.log('Wallet connected. DID:', did);
+        
+        // Check if user is registered
+        const isRegistered = checkUserRegistration(address);
+        setIsUserRegistered(isRegistered);
+        
+        // If not registered, redirect to registration page
+        if (!isRegistered) {
+          console.log('User not registered. Redirecting to registration...');
+          setError('No account found for this wallet. Starting registration process...');
+          // Wait a moment to show the error message before redirecting
+          setTimeout(() => {
+            router.push('/registration');
+          }, 2000);
+          return;
+        }
       }
     } catch (err) {
       setError(`Failed to connect wallet: ${err.message || 'Unknown error'}`);
@@ -105,8 +142,9 @@ export default function Login() {
         throw new Error("Wallet not connected");
       }
 
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
-      const signer = provider.getSigner();
+      // Updated to use new ethers BrowserProvider syntax
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
       
       // User signs the challenge directly with their private key
       // No server involved - this is pure client-side cryptography
@@ -124,8 +162,8 @@ export default function Login() {
   const verifySignature = async (message, signature, address) => {
     try {
       // Recover the address from the signature using pure cryptography
-      // This uses client-side verification only, no server needed
-      const recoveredAddress = ethers.utils.verifyMessage(message, signature);
+      // Updated to use new ethers verifyMessage syntax
+      const recoveredAddress = ethers.verifyMessage(message, signature);
       
       // Check if recovered address matches the connected wallet
       return recoveredAddress.toLowerCase() === address.toLowerCase();
@@ -150,6 +188,10 @@ export default function Login() {
   const handleDidVerify = async () => {
     if (!isWalletConnected || !userDid) {
       await connectWallet();
+      // Don't proceed if the user is not registered
+      if (!isUserRegistered) {
+        return;
+      }
       return;
     }
 
@@ -196,7 +238,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="animate-gradient min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
           <Image src="/logo.svg" alt="LiberaChain Logo" width={80} height={80} className="mx-auto" />
@@ -204,7 +246,7 @@ export default function Login() {
         <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-white">
           Sign in with your DID
         </h2>
-        <p className="mt-2 text-center text-sm text-gray-400">
+        <p className="mt-2 text-center text-sm text-gray-100">
           Access your decentralized identity on LiberaChain
         </p>
       </div>

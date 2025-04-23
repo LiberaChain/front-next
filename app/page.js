@@ -15,6 +15,14 @@ export default function Home() {
 
       <Link href={'/chat'}>
         <div className='flex w-40 h-12 justify-center items-center
+        rounded-xl border border-white text-white font-semibold
+        text-md hover:bg-white hover:text-[#2FD7A2] '>
+          <p>Demo Login</p>
+        </div>
+      </Link>
+
+      <Link href={'/login'}>
+        <div className='flex w-40 h-12 justify-center items-center
          rounded-xl border border-white text-white font-semibold
          text-md hover:bg-white hover:text-[#2FD7A2] '>
           <p>Login</p>

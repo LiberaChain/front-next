@@ -11,6 +11,7 @@
   "dependencies": {
     "@decentralized-identity/did-auth-jose": "^0.1.14",
     "did-resolver": "^4.1.0",
+    "ethers": "^6.13.5",
     "ethr-did-resolver": "^11.0.3",
     "next": "15.3.1",
     "react": "^19.0.0",
