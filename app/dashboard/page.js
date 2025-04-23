@@ -4,13 +4,23 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { searchUserByDid, createFriendRequest, generateAsymmetricKeys, storeMessagingKeys, retrieveMessagingKeys } from '../utils/blockchainTransactions';
+import { 
+  searchUserByDid, 
+  createFriendRequest, 
+  generateAsymmetricKeys, 
+  storeMessagingKeys, 
+  retrieveMessagingKeys,
+  storeUserProfileInIPFS,
+  getUserProfileFromIPFS,
+  setUserNameForDID
+} from '../utils/blockchainTransactions';
 import { QRCodeCanvas } from 'qrcode.react';
 import { Html5Qrcode } from 'html5-qrcode';
 
 export default function Dashboard() {
   const router = useRouter();
   const [profileData, setProfileData] = useState(null);
+  const [ipfsProfile, setIpfsProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResult, setSearchResult] = useState(null);
@@ -20,6 +30,10 @@ export default function Dashboard() {
   const [showQrCode, setShowQrCode] = useState(false);
   const [showQrScanner, setShowQrScanner] = useState(false);
   const [scannerInitialized, setScannerInitialized] = useState(false);
+  const [username, setUsername] = useState('');
+  const [savingUsername, setSavingUsername] = useState(false);
+  const [usernameSuccess, setUsernameSuccess] = useState(false);
+  const [usernameError, setUsernameError] = useState(null);
   const scannerRef = useRef(null);
   
   // Check if user is authenticated on component mount
@@ -48,7 +62,13 @@ export default function Dashboard() {
         
         // Load user profile data
         if (profileData) {
-          setProfileData(JSON.parse(profileData));
+          const parsedProfile = JSON.parse(profileData);
+          setProfileData(parsedProfile);
+          
+          // After loading local profile, check for IPFS profile
+          if (parsedProfile.did) {
+            loadIpfsProfile(parsedProfile.did);
+          }
         }
 
         // Ensure messaging keys exist
@@ -63,6 +83,64 @@ export default function Dashboard() {
     
     checkAuth();
   }, [router]);
+  
+  // Load user profile from IPFS
+  const loadIpfsProfile = async (did) => {
+    try {
+      const ipfsProfileData = await getUserProfileFromIPFS(did);
+      
+      if (ipfsProfileData) {
+        setIpfsProfile(ipfsProfileData);
+        // If we have a username in the IPFS profile, set the input field
+        if (ipfsProfileData.username) {
+          setUsername(ipfsProfileData.username);
+        }
+        console.log('Loaded IPFS profile:', ipfsProfileData);
+      } else {
+        console.log('No IPFS profile found for DID:', did);
+      }
+    } catch (error) {
+      console.error('Error loading IPFS profile:', error);
+    }
+  };
+  
+  // Handle saving username to IPFS
+  const handleSaveUsername = async () => {
+    if (!profileData || !profileData.did || !username.trim()) return;
+    
+    try {
+      setSavingUsername(true);
+      setUsernameSuccess(false);
+      setUsernameError(null);
+      
+      // Set username for this DID in IPFS
+      const result = await setUserNameForDID(profileData.did, username);
+      
+      if (result && result.success) {
+        setUsernameSuccess(true);
+        
+        // Also update the local profile data
+        const updatedProfile = { ...profileData, displayName: username };
+        setProfileData(updatedProfile);
+        localStorage.setItem('liberaChainIdentity', JSON.stringify(updatedProfile));
+        
+        // Reload IPFS profile
+        await loadIpfsProfile(profileData.did);
+        
+        console.log('Username set successfully in IPFS:', result);
+        
+        // Clear success message after 3 seconds
+        setTimeout(() => {
+          setUsernameSuccess(false);
+        }, 3000);
+      }
+    } catch (error) {
+      console.error('Error setting username:', error);
+      setUsernameError(error.message || 'Failed to update username');
+    } finally {
+      setSavingUsername(false);
+    }
+  };
 
   // Initialize scanner when QR scanner is shown
   useEffect(() => {
@@ -348,7 +426,7 @@ export default function Dashboard() {
                   </svg>
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-white">{profileData?.displayName || "Anonymous User"}</h2>
+                  <h2 className="text-xl font-bold text-white">{ipfsProfile?.username || profileData?.displayName || "Anonymous User"}</h2>
                   <p className="text-sm text-gray-400">Decentralized Identity</p>
                 </div>
               </div>
@@ -400,6 +478,114 @@ export default function Dashboard() {
                   {profileData?.createdAt ? new Date(profileData.createdAt).toLocaleString() : "Unknown"}
                 </p>
               </div>
+            </div>
+
+            {/* Edit Profile Section - NEW */}
+            <div className="bg-gray-800 rounded-lg shadow p-6 border border-gray-700">
+              <h2 className="text-lg font-medium text-white">Edit Profile</h2>
+              <p className="mt-1 text-sm text-gray-400">
+                Your profile information will be stored in IPFS and linked to your DID
+              </p>
+              
+              <div className="mt-6">
+                <label htmlFor="username" className="block text-sm font-medium text-gray-300">
+                  Username
+                </label>
+                <div className="mt-1 relative rounded-md shadow-sm">
+                  <input
+                    type="text"
+                    name="username"
+                    id="username"
+                    className="block w-full bg-gray-700 border border-gray-600 rounded-md py-2 pl-3 pr-12 text-white placeholder-gray-400 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
+                    placeholder="Set your username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    maxLength={30}
+                  />
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                    <span className="text-gray-400 sm:text-sm" id="username-max">
+                      {username.length}/30
+                    </span>
+                  </div>
+                </div>
+                
+                {/* Status messages */}
+                {usernameSuccess && (
+                  <div className="mt-2 text-sm text-emerald-400">
+                    Username updated successfully in IPFS!
+                  </div>
+                )}
+                
+                {usernameError && (
+                  <div className="mt-2 text-sm text-red-400">
+                    Error: {usernameError}
+                  </div>
+                )}
+                
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 ${
+                      (savingUsername || !username.trim()) ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                    onClick={handleSaveUsername}
+                    disabled={savingUsername || !username.trim()}
+                  >
+                    {savingUsername ? (
+                      <>
+                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Saving...
+                      </>
+                    ) : (
+                      <>Save Username</>
+                    )}
+                  </button>
+                </div>
+              </div>
+              
+              {ipfsProfile && (
+                <div className="mt-6">
+                  <h3 className="text-sm font-medium text-gray-300">IPFS Profile Information</h3>
+                  
+                  <div className="mt-2 bg-gray-700/50 rounded-md p-3">
+                    <div className="text-xs text-gray-300">
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="text-gray-400">Username:</div>
+                        <div className="col-span-2 text-emerald-400">{ipfsProfile.username || "Not set"}</div>
+                        
+                        <div className="text-gray-400">Last Updated:</div>
+                        <div className="col-span-2">
+                          {ipfsProfile.updatedAt ? new Date(ipfsProfile.updatedAt).toLocaleString() : "Unknown"}
+                        </div>
+                        
+                        {ipfsProfile.cid && (
+                          <>
+                            <div className="text-gray-400">IPFS CID:</div>
+                            <div className="col-span-2 text-xs text-blue-400 break-all">{ipfsProfile.cid}</div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <p className="mt-2 text-xs text-gray-400">
+                    Your profile is stored in IPFS and linked to your DID for decentralized access
+                  </p>
+                </div>
+              )}
+              
+              {profileData?.did && !ipfsProfile && (
+                <div className="mt-4">
+                  <div className="p-3 rounded-md bg-blue-900/20 border border-blue-800">
+                    <p className="text-sm text-blue-400">
+                      Your profile hasn't been stored in IPFS yet. Set a username above to create your IPFS profile.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Quick Actions */}

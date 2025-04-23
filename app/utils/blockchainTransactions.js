@@ -1,5 +1,6 @@
 // Blockchain Transactions Utility
 import { ethers } from 'ethers';
+import { uploadProfileToIPFS, retrieveProfileFromIPFS, updateProfileInIPFS } from './ipfsService';
 
 // Configuration for Ethereum networks
 export const providerConfig = {
@@ -282,5 +283,142 @@ export const searchUserByDid = async (did) => {
   } catch (error) {
     console.error('Error searching for user:', error);
     return null;
+  }
+};
+
+/**
+ * Store user profile information in IPFS and link it to DID
+ * @param {string} did - User's decentralized identifier
+ * @param {Object} profileData - User profile data (username, bio, etc)
+ * @returns {Promise<Object>} Result object with IPFS CID and status
+ */
+export const storeUserProfileInIPFS = async (did, profileData) => {
+  try {
+    if (!did) throw new Error('DID is required');
+    if (!profileData) throw new Error('Profile data is required');
+    
+    // Ensure profile data has the DID
+    profileData.did = did;
+    profileData.updatedAt = Date.now();
+    
+    // Upload to IPFS
+    const cid = await uploadProfileToIPFS(profileData);
+    
+    if (!cid) throw new Error('Failed to upload profile to IPFS');
+    
+    // Store CID reference locally for this user's DID
+    const didToCidMap = JSON.parse(localStorage.getItem('liberaChainDidToCidMap') || '{}');
+    didToCidMap[did] = cid;
+    localStorage.setItem('liberaChainDidToCidMap', JSON.stringify(didToCidMap));
+    
+    // In a production app, we would also store this mapping on-chain
+    // For example, calling a smart contract to register the CID for this DID
+    
+    console.log(`Profile for ${did} stored in IPFS with CID: ${cid}`);
+    
+    return {
+      success: true,
+      did,
+      cid,
+      timestamp: Date.now()
+    };
+  } catch (error) {
+    console.error('Error storing user profile in IPFS:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get a user's profile from IPFS using their DID
+ * @param {string} did - User's decentralized identifier
+ * @returns {Promise<Object|null>} User profile data or null if not found
+ */
+export const getUserProfileFromIPFS = async (did) => {
+  try {
+    if (!did) throw new Error('DID is required');
+    
+    // Get CID reference for this DID
+    const didToCidMap = JSON.parse(localStorage.getItem('liberaChainDidToCidMap') || '{}');
+    const cid = didToCidMap[did];
+    
+    if (!cid) {
+      console.warn(`No profile found for DID: ${did}`);
+      return null;
+    }
+    
+    // Retrieve profile from IPFS
+    const profileData = await retrieveProfileFromIPFS(cid);
+    
+    return profileData;
+  } catch (error) {
+    console.error('Error getting user profile from IPFS:', error);
+    return null;
+  }
+};
+
+/**
+ * Update a user's profile information in IPFS
+ * @param {string} did - User's decentralized identifier
+ * @param {Object} updatedProfileData - Updated profile data
+ * @returns {Promise<Object>} Result object with new CID and status
+ */
+export const updateUserProfileInIPFS = async (did, updatedProfileData) => {
+  try {
+    if (!did) throw new Error('DID is required');
+    if (!updatedProfileData) throw new Error('Updated profile data is required');
+    
+    // Get existing profile data
+    const existingProfile = await getUserProfileFromIPFS(did);
+    
+    // Merge existing data with updates
+    const mergedProfile = {
+      ...existingProfile,
+      ...updatedProfileData,
+      did,
+      updatedAt: Date.now()
+    };
+    
+    // Upload updated profile to IPFS (creates new CID)
+    const newCid = await updateProfileInIPFS(mergedProfile);
+    
+    if (!newCid) throw new Error('Failed to update profile in IPFS');
+    
+    // Update CID reference for this DID
+    const didToCidMap = JSON.parse(localStorage.getItem('liberaChainDidToCidMap') || '{}');
+    didToCidMap[did] = newCid;
+    localStorage.setItem('liberaChainDidToCidMap', JSON.stringify(didToCidMap));
+    
+    // In a production app, we would also update this mapping on-chain
+    
+    console.log(`Profile for ${did} updated in IPFS with new CID: ${newCid}`);
+    
+    return {
+      success: true,
+      did,
+      cid: newCid,
+      timestamp: Date.now()
+    };
+  } catch (error) {
+    console.error('Error updating user profile in IPFS:', error);
+    throw error;
+  }
+};
+
+/**
+ * Set a username for a DID in the IPFS profile
+ * @param {string} did - User's decentralized identifier
+ * @param {string} username - Username to set
+ * @returns {Promise<Object>} Result object with new CID and status
+ */
+export const setUserNameForDID = async (did, username) => {
+  try {
+    if (!did) throw new Error('DID is required');
+    if (!username) throw new Error('Username is required');
+    
+    // Update profile with username
+    return await updateUserProfileInIPFS(did, { username });
+  } catch (error) {
+    console.error('Error setting username for DID:', error);
+    throw error;
   }
 };
