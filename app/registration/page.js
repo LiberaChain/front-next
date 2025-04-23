@@ -2,50 +2,105 @@
 
 import { useState, useEffect } from 'react';
 import { Resolver } from 'did-resolver';
-import { getResolver } from 'ethr-did-resolver';
-import { createJWT, verifyJWT } from '@decentralized-identity/did-auth-jose';
+import { getResolver as getEthrResolver } from 'ethr-did-resolver';
+import { verifyJWT } from '@decentralized-identity/did-auth-jose';
+import { ethers } from 'ethers';
 import Link from 'next/link';
 import Image from 'next/image';
 
+// Configuration for Ethereum networks
+const providerConfig = {
+  // Public RPC endpoint - no central authority
+  rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com', // Sepolia testnet for development
+  name: 'sepolia',
+  chainId: '0x5',
+  registry: '0xdca7ef03e98e0dc2b855be647c39abe984fcf21b' // Registry address for sepolia
+};
+
 // Main Registration component
 export default function Registration() {
-  // Form state management
-  const [formData, setFormData] = useState({
-    username: '',
-    email: '',
-  });
+  const [displayName, setDisplayName] = useState('');
   const [didIdentifier, setDidIdentifier] = useState('');
   const [step, setStep] = useState(1); // Multi-step registration
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [didCreated, setDidCreated] = useState(false);
+  const [isWalletConnected, setIsWalletConnected] = useState(false);
+  const [walletAddress, setWalletAddress] = useState('');
+  const [ethersProvider, setEthersProvider] = useState(null);
+  const [didResolver, setDidResolver] = useState(null);
+  
+  // Initialize DID resolver and ethers provider
+  useEffect(() => {
+    const initProvider = async () => {
+      try {
+        // Create resolver instance with Ethereum DID resolver (public blockchain, no centralization)
+        const resolver = new Resolver(getEthrResolver(providerConfig));
+        setDidResolver(resolver);
+        console.log('DID resolver initialized successfully');
+        
+        // Initialize ethers provider - connecting directly to public node
+        const provider = new ethers.providers.JsonRpcProvider(providerConfig.rpcUrl);
+        setEthersProvider(provider);
+        console.log('Ethers provider initialized successfully');
+      } catch (err) {
+        console.error('Error initializing blockchain connections:', err);
+      }
+    };
+    
+    initProvider();
+  }, []);
 
-  // Handle form changes
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  // Generate a new DID
-  const generateDid = async () => {
+  // Connect to Ethereum wallet
+  const connectWallet = async () => {
     try {
       setLoading(true);
       setError('');
+
+      // Check if MetaMask or other wallet is installed
+      if (!window.ethereum) {
+        setError('Please install MetaMask or another Ethereum wallet');
+        setLoading(false);
+        return;
+      }
+
+      // Connect directly to the user's wallet - no intermediary server
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      // Request account access from user's wallet
+      await provider.send("eth_requestAccounts", []);
+      const signer = provider.getSigner();
+      const address = await signer.getAddress();
       
-      // In a production environment, this would connect to a DID provider or blockchain
-      // For demo purposes, we're simulating the DID creation process
-      const mockDid = `did:ethr:${Math.random().toString(36).substring(2, 15)}`;
-      
-      // Simulate network delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      setDidIdentifier(mockDid);
-      setDidCreated(true);
-      setLoading(false);
+      if (address) {
+        // Create a DID from the Ethereum address - fully decentralized identity
+        const did = `did:ethr:${address}`;
+        setDidIdentifier(did);
+        setWalletAddress(address);
+        setIsWalletConnected(true);
+        setDidCreated(true);
+        console.log('Wallet connected. DID:', did);
+      }
     } catch (err) {
-      setError('Failed to generate DID. Please try again.');
+      setError(`Failed to connect wallet: ${err.message || 'Unknown error'}`);
+    } finally {
       setLoading(false);
     }
+  };
+
+  // Handle display name change
+  const handleDisplayNameChange = (e) => {
+    setDisplayName(e.target.value);
+  };
+
+  // Store identity data in browser's local storage
+  const storeIdentityInLocalStorage = () => {
+    const identityData = {
+      did: didIdentifier,
+      displayName: displayName || `User-${walletAddress.substring(2, 8)}`, // Default name if none provided
+      wallet: walletAddress,
+      createdAt: new Date().toISOString()
+    };
+    localStorage.setItem('liberaChainIdentity', JSON.stringify(identityData));
   };
 
   // Handle form submission
@@ -53,13 +108,7 @@ export default function Registration() {
     e.preventDefault();
     
     if (step === 1) {
-      // Validate first step
-      if (!formData.username || !formData.email) {
-        setError('Please fill all required fields');
-        return;
-      }
-      
-      // Move to DID creation step
+      // Move directly to DID creation
       setError('');
       setStep(2);
       return;
@@ -67,22 +116,19 @@ export default function Registration() {
     
     if (step === 2) {
       if (!didCreated) {
-        setError('Please create your decentralized identity first');
+        setError('Please connect your wallet to create your decentralized identity');
         return;
       }
       
       try {
         setLoading(true);
         
-        // In a production app, you would:
-        // 1. Create a challenge for the user to sign with their DID
-        // 2. Verify the signature
-        // 3. Register the user in your system
-        
-        // Simulate API request
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        // Store the DID and display name locally
+        // No server-side registration needed
+        storeIdentityInLocalStorage();
         
         // Move to success step
+        await new Promise(resolve => setTimeout(resolve, 500));
         setLoading(false);
         setStep(3);
       } catch (err) {
@@ -90,6 +136,13 @@ export default function Registration() {
         setLoading(false);
       }
     }
+  };
+
+  // Register a new DID document on-chain (in a real implementation)
+  const registerDidOnChain = async () => {
+    // This would create the actual on-chain registration of the DID
+    // For now, we're using the wallet's address as the DID
+    return true;
   };
 
   return (
@@ -117,43 +170,25 @@ export default function Registration() {
             <div className={`h-2 w-2 rounded-full ${step >= 3 ? 'bg-emerald-500' : 'bg-gray-600'}`}></div>
           </div>
 
-          {/* Step 1: Basic Info */}
+          {/* Step 1: Introduction */}
           {step === 1 && (
             <form className="space-y-6" onSubmit={handleSubmit}>
               <div>
-                <label htmlFor="username" className="block text-sm font-medium text-gray-300">
-                  Username (@ handle)
-                </label>
-                <div className="mt-1">
-                  <input
-                    id="username"
-                    name="username"
-                    type="text"
-                    autoComplete="username"
-                    required
-                    value={formData.username}
-                    onChange={handleChange}
-                    className="bg-gray-700 text-white block w-full appearance-none rounded-md border border-gray-600 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-emerald-500 sm:text-sm"
-                  />
-                </div>
+                <h3 className="text-lg font-medium text-white">Welcome to LiberaChain</h3>
+                <p className="mt-2 text-sm text-gray-400">
+                  LiberaChain uses decentralized identity (DID) technology to give you complete control over your digital identity. 
+                  No email, no password, no central authority.
+                </p>
               </div>
 
-              <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-300">
-                  Email address
-                </label>
-                <div className="mt-1">
-                  <input
-                    id="email"
-                    name="email"
-                    type="email"
-                    autoComplete="email"
-                    required
-                    value={formData.email}
-                    onChange={handleChange}
-                    className="bg-gray-700 text-white block w-full appearance-none rounded-md border border-gray-600 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-emerald-500 sm:text-sm"
-                  />
-                </div>
+              <div className="rounded-md bg-gray-700 p-4">
+                <h4 className="text-sm font-medium text-white mb-2">How this works:</h4>
+                <ul className="list-disc pl-5 space-y-1 text-xs text-gray-300">
+                  <li>Connect your Ethereum wallet (like MetaMask)</li>
+                  <li>Your wallet address generates your unique DID</li>
+                  <li>You control your identity with your private key</li>
+                  <li>No central database storing your personal data</li>
+                </ul>
               </div>
 
               {error && (
@@ -169,7 +204,7 @@ export default function Registration() {
                   type="submit"
                   className="flex w-full justify-center rounded-md border border-transparent bg-emerald-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
                 >
-                  Continue
+                  Get Started
                 </button>
               </div>
             </form>
@@ -188,7 +223,7 @@ export default function Registration() {
               {!didCreated ? (
                 <div className="flex flex-col items-center justify-center py-4">
                   <button
-                    onClick={generateDid}
+                    onClick={connectWallet}
                     disabled={loading}
                     className="flex items-center justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
                   >
@@ -198,19 +233,48 @@ export default function Registration() {
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
-                        Generating...
+                        Connecting...
                       </>
-                    ) : "Generate DID"}
+                    ) : (
+                      <>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M17.778 8.222c-4.296-4.296-11.26-4.296-15.556 0A1 1 0 01.808 6.808c5.076-5.077 13.308-5.077 18.384 0a1 1 0 01-1.414 1.414zM14.95 11.05a7 7 0 00-9.9 0 1 1 0 01-1.414-1.414 9 9 0 0112.728 0 1 1 0 01-1.414 1.414zM12.12 13.88a3 3 0 00-4.242 0 1 1 0 01-1.415-1.415 5 5 0 017.072 0 1 1 0 01-1.415 1.415zM9 16a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                        </svg>
+                        Connect Wallet
+                      </>
+                    )}
                   </button>
                 </div>
               ) : (
-                <div className="rounded-md bg-gray-700 p-4">
-                  <div className="flex flex-col">
-                    <span className="text-sm font-medium text-gray-300">Your DID:</span>
-                    <code className="mt-1 text-xs text-emerald-400 break-all">{didIdentifier}</code>
-                    <p className="mt-2 text-xs text-gray-400">
-                      This is your unique decentralized identifier. Keep it safe!
-                    </p>
+                <div className="space-y-4">
+                  <div className="rounded-md bg-gray-700 p-4">
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium text-gray-300">Your DID:</span>
+                      <code className="mt-1 text-xs text-emerald-400 break-all">{didIdentifier}</code>
+                      <p className="mt-2 text-xs text-gray-400">
+                        This is your unique decentralized identifier derived from your wallet address. Keep it safe!
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label htmlFor="displayName" className="block text-sm font-medium text-gray-300">
+                      Display Name (optional)
+                    </label>
+                    <div className="mt-1">
+                      <input
+                        id="displayName"
+                        name="displayName"
+                        type="text"
+                        value={displayName}
+                        onChange={handleDisplayNameChange}
+                        placeholder={`User-${walletAddress ? walletAddress.substring(2, 8) : 'XXX'}`}
+                        className="bg-gray-700 text-white block w-full appearance-none rounded-md border border-gray-600 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-emerald-500 sm:text-sm"
+                      />
+                      <p className="mt-1 text-xs text-gray-400">
+                        A human-readable name for your DID. This is stored locally and not on a central server.
+                      </p>
+                    </div>
                   </div>
                 </div>
               )}
@@ -244,7 +308,7 @@ export default function Registration() {
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
-                        Registering...
+                        Finalizing...
                       </>
                     ) : "Complete Registration"}
                   </button>
@@ -265,17 +329,24 @@ export default function Registration() {
               <div>
                 <h3 className="text-lg font-medium text-white">Registration successful!</h3>
                 <p className="mt-1 text-sm text-gray-400">
-                  Your decentralized identity has been created and registered.
+                  Your decentralized identity has been created successfully.
                 </p>
               </div>
 
               <div className="rounded-md bg-gray-700 p-4">
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium text-gray-300">Username:</span>
-                  <span className="text-sm text-emerald-400">{formData.username}</span>
+                <div className="flex flex-col text-left">
+                  <span className="text-sm font-medium text-gray-300">Display Name:</span>
+                  <span className="text-sm text-emerald-400">{displayName || `User-${walletAddress.substring(2, 8)}`}</span>
                   
                   <span className="mt-2 text-sm font-medium text-gray-300">DID:</span>
                   <code className="text-xs text-emerald-400 break-all">{didIdentifier}</code>
+                  
+                  <div className="mt-4 rounded-md bg-blue-900/30 p-2">
+                    <p className="text-xs text-blue-300">
+                      <strong>Important:</strong> Your identity is controlled by your private key in your wallet. 
+                      Make sure you have backed up your wallet recovery phrase securely!
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -291,11 +362,11 @@ export default function Registration() {
           {/* Footer info */}
           <div className="mt-8">
             <p className="text-center text-xs text-gray-500">
-              By registering, you retain full control of your identity through decentralized technology.
+              By creating a DID, you retain full control of your identity through decentralized blockchain technology.
             </p>
             {step < 3 && (
               <p className="text-center text-xs text-gray-500 mt-2">
-                Already have an account? <Link href="/login" className="text-emerald-500 hover:text-emerald-400">Sign in</Link>
+                Already have a DID? <Link href="/login" className="text-emerald-500 hover:text-emerald-400">Sign in with your DID</Link>
               </p>
             )}
           </div>

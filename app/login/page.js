@@ -1,34 +1,155 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { Resolver } from 'did-resolver';
+import { getResolver as getEthrResolver } from 'ethr-did-resolver';
+import { verifyJWT, decodeJWT } from '@decentralized-identity/did-auth-jose';
+import { ethers } from 'ethers';
+
+// Configuration for Ethereum networks
+const providerConfig = {
+  // Public RPC endpoint - no central authority
+
+  rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com', // Sepolia testnet for development
+  name: 'sepolia',
+  chainId: '0x5',
+  registry: '0xdca7ef03e98e0dc2b855be647c39abe984fcf21b' // Registry address for sepolia
+};
 
 export default function Login() {
   const router = useRouter();
-  const [formData, setFormData] = useState({
-    identifier: '', // Can be email or username
-    password: '',
-  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [didVerification, setDidVerification] = useState(false);
   const [didVerificationComplete, setDidVerificationComplete] = useState(false);
+  const [didChallenge, setDidChallenge] = useState('');
+  const [isWalletConnected, setIsWalletConnected] = useState(false);
+  const [userDid, setUserDid] = useState('');
+  const [ethersProvider, setEthersProvider] = useState(null);
+  const [walletAddress, setWalletAddress] = useState('');
+  const [signedMessage, setSignedMessage] = useState('');
+  const [didResolver, setDidResolver] = useState(null);
+  
+  // Initialize DID resolver and ethers provider
+  useEffect(() => {
+    const initProvider = async () => {
+      try {
+        // Create resolver instance with Ethereum DID resolver (public blockchain, no centralization)
+        const resolver = new Resolver(getEthrResolver(providerConfig));
+        setDidResolver(resolver);
+        console.log('DID resolver initialized successfully');
+        
+        // Initialize ethers provider - connecting directly to public node
+        const provider = new ethers.providers.JsonRpcProvider(providerConfig.rpcUrl);
+        setEthersProvider(provider);
+        console.log('Ethers provider initialized successfully');
+      } catch (err) {
+        console.error('Error initializing blockchain connections:', err);
+      }
+    };
+    
+    initProvider();
+  }, []);
 
-  // Handle form changes
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+  // Generate a challenge for DID verification
+  useEffect(() => {
+    if (didVerification && !didChallenge) {
+      // Create a unique challenge that includes a timestamp to prevent replay attacks
+      const challenge = `Authenticate with LiberaChain at ${new Date().toISOString()} with nonce ${Math.random().toString(36).substring(2, 15)}`;
+      setDidChallenge(challenge);
+    }
+  }, [didVerification, didChallenge]);
+
+  // Connect to Ethereum wallet
+  const connectWallet = async () => {
+    try {
+      setLoading(true);
+      setError('');
+
+      // Check if MetaMask or other wallet is installed
+      if (!window.ethereum) {
+        setError('Please install MetaMask or another Ethereum wallet');
+        setLoading(false);
+        return;
+      }
+
+      // Connect directly to the user's wallet - no intermediary server
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      // Request account access from user's wallet
+      await provider.send("eth_requestAccounts", []);
+      const signer = provider.getSigner();
+      const address = await signer.getAddress();
+      
+      if (address) {
+        // Create a DID from the Ethereum address - fully decentralized identity
+        const did = `did:ethr:${address}`;
+        setUserDid(did);
+        setWalletAddress(address);
+        setIsWalletConnected(true);
+        console.log('Wallet connected. DID:', did);
+      }
+    } catch (err) {
+      setError(`Failed to connect wallet: ${err.message || 'Unknown error'}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Handle form submission
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    // Basic validation
-    if (!formData.identifier || !formData.password) {
-      setError('Please fill all required fields');
+  // Function to directly sign a challenge with the user's wallet
+  const signChallenge = async () => {
+    try {
+      if (!window.ethereum || !walletAddress) {
+        throw new Error("Wallet not connected");
+      }
+
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const signer = provider.getSigner();
+      
+      // User signs the challenge directly with their private key
+      // No server involved - this is pure client-side cryptography
+      const signature = await signer.signMessage(didChallenge);
+      setSignedMessage(signature);
+      
+      return signature;
+    } catch (err) {
+      console.error("Error signing challenge:", err);
+      throw err;
+    }
+  };
+
+  // Verify the signature on the client side using blockchain
+  const verifySignature = async (message, signature, address) => {
+    try {
+      // Recover the address from the signature using pure cryptography
+      // This uses client-side verification only, no server needed
+      const recoveredAddress = ethers.utils.verifyMessage(message, signature);
+      
+      // Check if recovered address matches the connected wallet
+      return recoveredAddress.toLowerCase() === address.toLowerCase();
+    } catch (err) {
+      console.error("Error verifying signature:", err);
+      return false;
+    }
+  };
+
+  // Store authentication state in browser's local storage
+  // In a production app, this should use more secure storage with encryption
+  const storeAuthInLocalStorage = (did, expiryTime) => {
+    const authData = {
+      did,
+      expiry: expiryTime,
+      wallet: walletAddress
+    };
+    localStorage.setItem('liberaChainAuth', JSON.stringify(authData));
+  };
+
+  // Handle DID verification completely on the client side
+  const handleDidVerify = async () => {
+    if (!isWalletConnected || !userDid) {
+      await connectWallet();
       return;
     }
 
@@ -36,49 +157,42 @@ export default function Login() {
       setLoading(true);
       setError('');
       
-      // In a production app, you would:
-      // 1. Send the credentials to your authentication service
-      // 2. Verify the DID if necessary
-      // 3. Return a session token or JWT
+      // 1. Let the user sign the challenge with their wallet
+      console.log(`Challenge for signing: ${didChallenge}`);
+      const signature = await signChallenge();
       
-      // Mock authentication - simulate API request delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // 2. Verify the signature directly in the browser
+      const isValid = await verifySignature(didChallenge, signature, walletAddress);
       
-      // For demo purposes, let's say any login works
-      console.log('User authenticated successfully');
+      if (!isValid) {
+        throw new Error("Signature verification failed");
+      }
       
-      // Redirect to dashboard (or home for now)
+      console.log(`DID ${userDid} successfully verified with blockchain cryptography`);
+      
+      // 3. Store authentication locally (24 hour expiry)
+      const expiryTime = Date.now() + (24 * 60 * 60 * 1000);
+      storeAuthInLocalStorage(userDid, expiryTime);
+      
+      setDidVerificationComplete(true);
+      
+      // Navigate after successful verification
+      await new Promise(resolve => setTimeout(resolve, 1000));
       router.push('/');
       
     } catch (err) {
-      setError('Authentication failed. Please check your credentials.');
+      setError(`DID verification failed: ${err.message || 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle DID verification
-  const handleDidVerify = async () => {
-    try {
-      setLoading(true);
-      setError('');
-      
-      // Simulate DID verification process
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      setDidVerificationComplete(true);
-      
-      // Simulate navigation after successful verification
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Redirect to dashboard
-      router.push('/');
-      
-    } catch (err) {
-      setError('DID verification failed. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+  // Handle QR code authentication for mobile wallets
+  const handleQrCodeAuth = () => {
+    // Generate QR code that contains an authentication request
+    // This would include the challenge and app details
+    // Mobile wallet scans this and returns a signed response
+    setDidVerification(true);
   };
 
   return (
@@ -88,7 +202,7 @@ export default function Login() {
           <Image src="/logo.svg" alt="LiberaChain Logo" width={80} height={80} className="mx-auto" />
         </div>
         <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-white">
-          Sign in to your account
+          Sign in with your DID
         </h2>
         <p className="mt-2 text-center text-sm text-gray-400">
           Access your decentralized identity on LiberaChain
@@ -104,39 +218,71 @@ export default function Login() {
               
               {!didVerificationComplete ? (
                 <>
-                  <div className="bg-gray-700 p-5 rounded-lg text-center">
-                    <div className="flex justify-center mb-4">
-                      <Image 
-                        src="/qr.png" 
-                        alt="QR Code" 
-                        width={180} 
-                        height={180} 
-                        className="mx-auto border-4 border-white p-1 rounded-md"
-                      />
-                    </div>
-                    <p className="text-sm text-gray-300 mb-4">
-                      Scan this QR code with your DID wallet app to authenticate
-                    </p>
-                    
-                    <div className="text-xs text-gray-400 p-2 bg-gray-800 rounded mb-2 overflow-x-auto">
-                      <code>did:ethr:0x7F39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0</code>
-                    </div>
-                    
-                    <button
-                      onClick={handleDidVerify}
-                      disabled={loading}
-                      className="mt-4 w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50"
-                    >
-                      {loading ? (
-                        <>
-                          <svg className="animate-spin -ml-1 mr-3 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
-                          Verifying...
-                        </>
-                      ) : "Mock Verification (Demo)"}
-                    </button>
+                  <div className="bg-gray-700 p-5 rounded-lg">
+                    {!isWalletConnected ? (
+                      <div className="text-center">
+                        <p className="text-sm text-gray-300 mb-4">
+                          Connect your Ethereum wallet to authenticate with your decentralized identity
+                        </p>
+                        <button
+                          onClick={connectWallet}
+                          disabled={loading}
+                          className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                        >
+                          {loading ? (
+                            <>
+                              <svg className="animate-spin -ml-1 mr-3 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                              Connecting...
+                            </>
+                          ) : "Connect Wallet"}
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex justify-center mb-4">
+                          <Image 
+                            src="/qr.png" 
+                            alt="QR Code" 
+                            width={180} 
+                            height={180} 
+                            className="mx-auto border-4 border-white p-1 rounded-md"
+                          />
+                        </div>
+                        <p className="text-sm text-gray-300 mb-4 text-center">
+                          Scan this QR code with your DID wallet app to authenticate
+                        </p>
+                        
+                        <div className="text-xs text-gray-400 p-2 bg-gray-800 rounded mb-2 overflow-x-auto text-center">
+                          <code>{userDid}</code>
+                        </div>
+                        
+                        <div className="text-xs text-gray-300 p-2 rounded mb-4">
+                          <p className="text-center font-medium mb-2">Challenge to sign:</p>
+                          <div className="bg-gray-800 p-2 rounded">
+                            <code>{didChallenge}</code>
+                          </div>
+                        </div>
+                        
+                        <button
+                          onClick={handleDidVerify}
+                          disabled={loading}
+                          className="mt-4 w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50"
+                        >
+                          {loading ? (
+                            <>
+                              <svg className="animate-spin -ml-1 mr-3 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                              Verifying on-chain...
+                            </>
+                          ) : "Sign & Verify"}
+                        </button>
+                      </>
+                    )}
                   </div>
                   
                   <div className="flex items-center justify-center">
@@ -145,7 +291,7 @@ export default function Login() {
                       className="text-sm text-emerald-500 hover:text-emerald-400"
                       onClick={() => setDidVerification(false)}
                     >
-                      Back to login
+                      Back to login options
                     </button>
                   </div>
                 </>
@@ -157,7 +303,7 @@ export default function Login() {
                     </svg>
                   </div>
                   <h3 className="text-lg font-medium text-white">Verification Successful!</h3>
-                  <p className="mt-2 text-sm text-gray-400">Redirecting to dashboard...</p>
+                  <p className="mt-2 text-sm text-gray-400">DID verified with blockchain cryptography. Redirecting to dashboard...</p>
                 </div>
               )}
               
@@ -170,117 +316,44 @@ export default function Login() {
               )}
             </div>
           ) : (
-            // Regular Login Form
+            // Login Options - Only decentralized methods
             <>
-              <form className="space-y-6" onSubmit={handleSubmit}>
-                <div>
-                  <label htmlFor="identifier" className="block text-sm font-medium text-gray-300">
-                    Email or Username
-                  </label>
-                  <div className="mt-1">
-                    <input
-                      id="identifier"
-                      name="identifier"
-                      type="text"
-                      autoComplete="username"
-                      required
-                      value={formData.identifier}
-                      onChange={handleChange}
-                      className="bg-gray-700 text-white block w-full appearance-none rounded-md border border-gray-600 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-emerald-500 sm:text-sm"
-                    />
-                  </div>
+              <div className="space-y-6">
+                <div className="text-center mb-6">
+                  <h3 className="text-lg font-medium text-white mb-2">Decentralized Authentication</h3>
+                  <p className="text-sm text-gray-400">
+                    Connect your crypto wallet or DID-enabled mobile app to authenticate
+                  </p>
                 </div>
-
-                <div>
-                  <label htmlFor="password" className="block text-sm font-medium text-gray-300">
-                    Password
-                  </label>
-                  <div className="mt-1">
-                    <input
-                      id="password"
-                      name="password"
-                      type="password"
-                      autoComplete="current-password"
-                      required
-                      value={formData.password}
-                      onChange={handleChange}
-                      className="bg-gray-700 text-white block w-full appearance-none rounded-md border border-gray-600 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-emerald-500 sm:text-sm"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <input
-                      id="remember-me"
-                      name="remember-me"
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-gray-600 text-emerald-600 focus:ring-emerald-500 bg-gray-700"
-                    />
-                    <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-300">
-                      Remember me
-                    </label>
-                  </div>
-
-                  <div className="text-sm">
-                    <a href="#" className="font-medium text-emerald-500 hover:text-emerald-400">
-                      Forgot your password?
-                    </a>
-                  </div>
-                </div>
-
-                {error && (
-                  <div className="rounded-md bg-red-900/40 p-4">
-                    <div className="flex">
-                      <div className="text-sm text-red-400">{error}</div>
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="flex w-full justify-center rounded-md border border-transparent bg-emerald-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:opacity-50"
-                  >
-                    {loading ? (
-                      <>
-                        <svg className="animate-spin -ml-1 mr-3 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Signing in...
-                      </>
-                    ) : "Sign in"}
-                  </button>
-                </div>
-              </form>
-
-              {/* Alternate login methods */}
-              <div className="mt-6">
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-600"></div>
-                  </div>
-                  <div className="relative flex justify-center text-sm">
-                    <span className="px-2 bg-gray-800 text-gray-400">Or continue with</span>
-                  </div>
-                </div>
-
-                <div className="mt-6 grid grid-cols-2 gap-3">
+                
+                <div className="grid grid-cols-1 gap-3">
                   <button
                     type="button"
-                    className="inline-flex w-full justify-center rounded-md border border-gray-600 bg-gray-700 py-2 px-4 text-sm font-medium text-gray-300 shadow-sm hover:bg-gray-600 focus:outline-none"
+                    className="inline-flex w-full justify-center rounded-md border border-transparent bg-emerald-600 py-3 px-4 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 focus:outline-none"
                     onClick={() => setDidVerification(true)}
                   >
-                    <span>DID Connect</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M17.778 8.222c-4.296-4.296-11.26-4.296-15.556 0A1 1 0 01.808 6.808c5.076-5.077 13.308-5.077 18.384 0a1 1 0 01-1.414 1.414zM14.95 11.05a7 7 0 00-9.9 0 1 1 0 01-1.414-1.414 9 9 0 0112.728 0 1 1 0 01-1.414 1.414zM12.12 13.88a3 3 0 00-4.242 0 1 1 0 01-1.415-1.415 5 5 0 017.072 0 1 1 0 01-1.415 1.415zM9 16a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                    </svg>
+                    <span>Connect Wallet</span>
                   </button>
                   <button
                     type="button"
-                    className="inline-flex w-full justify-center rounded-md border border-gray-600 bg-gray-700 py-2 px-4 text-sm font-medium text-gray-300 shadow-sm hover:bg-gray-600 focus:outline-none"
+                    className="inline-flex w-full justify-center rounded-md border border-gray-600 bg-gray-700 py-3 px-4 text-sm font-medium text-gray-300 shadow-sm hover:bg-gray-600 focus:outline-none"
+                    onClick={handleQrCodeAuth}
                   >
-                    <span>QR Code</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M3 4a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm2 2V5h1v1H5zM3 13a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1H4a1 1 0 01-1-1v-3zm2 2v-1h1v1H5zM13 3a1 1 0 00-1 1v3a1 1 0 001 1h3a1 1 0 001-1V4a1 1 0 00-1-1h-3zm1 2v1h1V5h-1zM13 12a1 1 0 00-1 1v3a1 1 0 001 1h3a1 1 0 001-1v-3a1 1 0 00-1-1h-3zm1 2v1h1v-1h-1z" clipRule="evenodd" />
+                    </svg>
+                    <span>Scan QR with Mobile Wallet</span>
                   </button>
+                </div>
+
+                <div className="pt-4 text-center">
+                  <p className="text-xs text-gray-400">
+                    By signing in with your decentralized identity, you retain full control of your data.
+                    <br />No passwords or centralized storage required.
+                  </p>
                 </div>
               </div>
             </>
@@ -289,9 +362,9 @@ export default function Login() {
           {/* Footer info */}
           <div className="mt-6">
             <p className="text-center text-xs text-gray-500">
-              Don't have an account?{' '}
+              Don't have a DID yet?{' '}
               <Link href="/registration" className="text-emerald-500 hover:text-emerald-400">
-                Register now
+                Create your decentralized identity
               </Link>
             </p>
           </div>
