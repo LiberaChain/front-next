@@ -12,6 +12,49 @@ export const providerConfig = {
 };
 
 /**
+ * Get blockchain network status information
+ * @returns {Object} Blockchain status information
+ */
+export const getBlockchainStatus = async () => {
+  try {
+    // Try to create a provider to check connection
+    const provider = new ethers.JsonRpcProvider(providerConfig.rpcUrl);
+    const network = await provider.getNetwork();
+    const blockNumber = await provider.getBlockNumber();
+    const isConnected = !!network;
+
+    return {
+      connected: isConnected,
+      name: providerConfig.name,
+      chainId: network ? network.chainId.toString() : providerConfig.chainId,
+      networkName: network ? network.name : 'Unknown',
+      rpcUrl: providerConfig.rpcUrl,
+      blockNumber: blockNumber,
+      registry: providerConfig.registry,
+      latestBlock: blockNumber ? blockNumber : 'Unknown',
+      status: isConnected ? 'connected' : 'disconnected',
+      isMock: false
+    };
+  } catch (error) {
+    console.error('Error getting blockchain status:', error);
+    // Return a mock status when connection fails
+    return {
+      connected: false,
+      name: providerConfig.name,
+      chainId: providerConfig.chainId,
+      networkName: 'Unknown',
+      rpcUrl: providerConfig.rpcUrl,
+      blockNumber: 'Unknown',
+      registry: providerConfig.registry,
+      latestBlock: 'Unknown',
+      status: 'disconnected',
+      isMock: true,
+      error: error.message
+    };
+  }
+};
+
+/**
  * Generate asymmetric key pair for secure messaging
  * @returns {Promise<Object>} Object containing publicKey, privateKey and address
  */

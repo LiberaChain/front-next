@@ -13,13 +13,45 @@ const auth = projectId && projectSecret
 
 // IPFS API endpoint
 const ipfsApiEndpoint = 'https://ipfs.infura.io:5001/api/v0';
+// IPFS Gateway
+const ipfsGateway = 'https://ipfs.io';
 
 /**
  * Check if IPFS credentials are available
  * @returns {boolean} Whether credentials are available
  */
-const hasIpfsCredentials = () => {
+export const hasIpfsCredentials = () => {
   return !!(projectId && projectSecret);
+};
+
+/**
+ * Get IPFS status information including gateway and mode
+ * @returns {Object} IPFS status information
+ */
+export const getIpfsStatus = () => {
+  const isConnected = hasIpfsCredentials();
+  return {
+    connected: isConnected,
+    mode: isConnected ? 'distributed' : 'local_storage',
+    gateway: isConnected ? ipfsGateway : 'mock (localStorage)',
+    apiEndpoint: isConnected ? ipfsApiEndpoint : 'none',
+    nodeType: isConnected ? 'Infura' : 'Local Mock',
+    health: isConnected ? 'healthy' : 'simulated',
+    storageCount: isConnected ? null : getLocalStorageItemCount()
+  };
+};
+
+/**
+ * Get the count of items in mock IPFS localStorage
+ * @returns {number} Count of items
+ */
+const getLocalStorageItemCount = () => {
+  try {
+    const profiles = JSON.parse(localStorage.getItem('liberaChainIpfsProfiles') || '{}');
+    return Object.keys(profiles).length;
+  } catch (e) {
+    return 0;
+  }
 };
 
 /**

@@ -12,8 +12,10 @@ import {
   retrieveMessagingKeys,
   storeUserProfileInIPFS,
   getUserProfileFromIPFS,
-  setUserNameForDID
+  setUserNameForDID,
+  getBlockchainStatus
 } from '../utils/blockchainTransactions';
+import { hasIpfsCredentials, getIpfsStatus } from '../utils/ipfsService';
 import { QRCodeCanvas } from 'qrcode.react';
 import { Html5Qrcode } from 'html5-qrcode';
 
@@ -36,6 +38,11 @@ export default function Dashboard() {
   const [usernameError, setUsernameError] = useState(null);
   const [friendsList, setFriendsList] = useState([]);
   const [loadingFriends, setLoadingFriends] = useState(true);
+  const [ipfsStatus, setIpfsStatus] = useState(getIpfsStatus());
+  const [showIpfsDetails, setShowIpfsDetails] = useState(false);
+  const [blockchainStatus, setBlockchainStatus] = useState(null);
+  const [showBlockchainDetails, setShowBlockchainDetails] = useState(false);
+  const [checkingBlockchain, setCheckingBlockchain] = useState(false);
   const scannerRef = useRef(null);
   
   // Check if user is authenticated on component mount
@@ -432,6 +439,23 @@ export default function Dashboard() {
     }
   }, [profileData]);
 
+  // Check blockchain status
+  useEffect(() => {
+    const checkBlockchainStatus = async () => {
+      try {
+        setCheckingBlockchain(true);
+        const status = await getBlockchainStatus();
+        setBlockchainStatus(status);
+      } catch (error) {
+        console.error("Error checking blockchain status:", error);
+      } finally {
+        setCheckingBlockchain(false);
+      }
+    };
+
+    checkBlockchainStatus();
+  }, []);
+
   // Show loading state
   if (loading) {
     return (
@@ -685,9 +709,20 @@ export default function Dashboard() {
               <div className="mt-6 space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-400">Blockchain Network</span>
-                  <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                    Active
-                  </span>
+                  {checkingBlockchain ? (
+                    <svg className="animate-spin h-4 w-4 text-emerald-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  ) : blockchainStatus?.connected ? (
+                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                      Active
+                    </span>
+                  ) : (
+                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                      {blockchainStatus?.isMock ? 'Not Connected' : 'Disconnected'}
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-400">DID Resolver</span>
@@ -697,9 +732,120 @@ export default function Dashboard() {
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-400">Network</span>
-                  <span className="text-sm text-gray-300">Sepolia Testnet</span>
+                  <span className="text-sm text-gray-300">
+                    {blockchainStatus?.name ? `${blockchainStatus.name.charAt(0).toUpperCase() + blockchainStatus.name.slice(1)} Testnet` : 'Sepolia Testnet'}
+                  </span>
+                </div>
+                {blockchainStatus && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-400">Chain ID</span>
+                    <span className="text-sm text-gray-300">{blockchainStatus.chainId}</span>
+                  </div>
+                )}
+                {blockchainStatus && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-400">Latest Block</span>
+                    <span className="text-sm text-gray-300">{blockchainStatus.latestBlock}</span>
+                  </div>
+                )}
+                <div className="flex justify-end mt-2">
+                  <button 
+                    onClick={() => setShowBlockchainDetails(!showBlockchainDetails)}
+                    className="text-xs text-blue-400 hover:text-blue-300 flex items-center mr-4"
+                  >
+                    {showBlockchainDetails ? 'Hide Blockchain Details' : 'Show Blockchain Details'}
+                  </button>
                 </div>
                 
+                {showBlockchainDetails && blockchainStatus && (
+                  <div className="mt-2 p-3 bg-gray-700 rounded-md text-xs">
+                    <div className="grid grid-cols-2 gap-2">
+                      <span className="text-gray-400">RPC URL:</span>
+                      <span className="text-gray-300 break-all">{blockchainStatus.rpcUrl}</span>
+                      
+                      <span className="text-gray-400">Registry:</span>
+                      <span className="text-gray-300 break-all">{blockchainStatus.registry}</span>
+                      
+                      <span className="text-gray-400">Network Name:</span>
+                      <span className="text-gray-300">{blockchainStatus.networkName}</span>
+                      
+                      <span className="text-gray-400">Connection Status:</span>
+                      <span className={`text-${blockchainStatus.connected ? 'emerald' : 'red'}-400`}>
+                        {blockchainStatus.status}
+                      </span>
+                    </div>
+                    
+                    {blockchainStatus.isMock && (
+                      <div className="mt-2 p-2 bg-gray-800/50 rounded border border-yellow-800/30">
+                        <p className="text-yellow-400">
+                          Using mocked blockchain data. Connection to network failed.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-400">IPFS</span>
+                  {ipfsStatus.connected ? (
+                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                      Connected
+                    </span>
+                  ) : (
+                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                      Local Storage Mode
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-400">Storage Mode</span>
+                  <span className="text-sm text-gray-300">{ipfsStatus.mode === 'distributed' ? 'Distributed (IPFS)' : 'Local (Browser Storage)'}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-400">Gateway</span>
+                  <span className="text-sm text-gray-300">{ipfsStatus.gateway}</span>
+                </div>
+                <div className="flex justify-end mt-2">
+                  <button 
+                    onClick={() => setShowIpfsDetails(!showIpfsDetails)}
+                    className="text-xs text-blue-400 hover:text-blue-300 flex items-center"
+                  >
+                    {showIpfsDetails ? 'Hide Details' : 'Show Details'}
+                  </button>
+                </div>
+                
+                {showIpfsDetails && (
+                  <div className="mt-2 p-3 bg-gray-700 rounded-md text-xs">
+                    <div className="grid grid-cols-2 gap-2">
+                      <span className="text-gray-400">Node Type:</span>
+                      <span className="text-gray-300">{ipfsStatus.nodeType}</span>
+                      
+                      <span className="text-gray-400">API Endpoint:</span>
+                      <span className="text-gray-300">{ipfsStatus.apiEndpoint}</span>
+                      
+                      <span className="text-gray-400">Health:</span>
+                      <span className="text-gray-300">{ipfsStatus.health}</span>
+                      
+                      {ipfsStatus.mode === 'local_storage' && (
+                        <>
+                          <span className="text-gray-400">Local Storage Items:</span>
+                          <span className="text-gray-300">{ipfsStatus.storageCount}</span>
+                        </>
+                      )}
+                    </div>
+                    
+                    {ipfsStatus.mode === 'local_storage' && (
+                      <div className="mt-2 p-2 bg-gray-800/50 rounded border border-yellow-800/30">
+                        <p className="text-yellow-400">
+                          Using browser storage as IPFS fallback. Your content is not distributed to the IPFS network.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-400">IPFS State</span>
+                  <span className="text-sm text-gray-300">{ipfsStatus.state || 'Unknown'}</span>
+                </div>
                 <div className="pt-4 mt-4 border-t border-gray-700">
                   <div className="flex items-center text-sm text-gray-400">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-emerald-500" viewBox="0 0 20 20" fill="currentColor">
