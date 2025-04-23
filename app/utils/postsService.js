@@ -252,3 +252,113 @@ export const canViewPost = (viewerDid, postMetadata) => {
   
   return false;
 };
+
+/**
+ * Extract basic metadata from external URLs (social media links)
+ * @param {string} url - URL to extract metadata from
+ * @returns {Promise<Object>} Object containing extracted metadata
+ */
+export const extractMetadataFromUrl = async (url) => {
+  try {
+    // Validate URL
+    if (!url || !url.startsWith('http')) {
+      throw new Error('Invalid URL format');
+    }
+    
+    // Determine the source type
+    let source = 'unknown';
+    if (url.includes('facebook.com') || url.includes('fb.com')) {
+      source = 'facebook';
+    } else if (url.includes('twitter.com') || url.includes('x.com')) {
+      source = 'x';
+    } else if (url.includes('reddit.com')) {
+      source = 'reddit';
+    } else if (url.includes('instagram.com')) {
+      source = 'instagram';
+    } else if (url.includes('linkedin.com')) {
+      source = 'linkedin';
+    } else if (url.includes('youtube.com') || url.includes('youtu.be')) {
+      source = 'youtube';
+    }
+
+    // In a production environment, we would:
+    // 1. Use proper API calls to fetch metadata (requires API keys)
+    // 2. Use Open Graph protocol to extract metadata
+    // 3. Handle rate limiting and errors properly
+    
+    // For this prototype, we'll return basic metadata
+    return {
+      url,
+      source,
+      extracted: true,
+      timestamp: Date.now()
+    };
+  } catch (error) {
+    console.error('Error extracting metadata from URL:', error);
+    return {
+      url,
+      source: 'unknown',
+      extracted: false,
+      error: error.message
+    };
+  }
+};
+
+/**
+ * Create a post from an imported URL
+ * @param {Object} data - Post data including URL and user's comment
+ * @param {Object} authorInfo - Author information
+ * @returns {Promise<Object>} Result containing CID and status
+ */
+export const createImportedPost = async (data, authorInfo) => {
+  try {
+    if (!data.url) throw new Error('URL is required');
+    if (!authorInfo.did) throw new Error('Author information is required');
+    
+    // Extract metadata from the URL
+    const metadata = await extractMetadataFromUrl(data.url);
+    
+    // Create post data structure
+    const postData = {
+      type: 'imported',
+      title: data.title || `Imported from ${metadata.source}`,
+      content: data.comment || '',
+      url: data.url,
+      source: metadata.source,
+      authorDid: authorInfo.did,
+      authorName: authorInfo.displayName || `User-${authorInfo.wallet?.substring(2, 8)}`,
+      timestamp: Date.now(),
+      metadata
+    };
+    
+    // Upload to IPFS
+    const cid = await uploadPostToIPFS(postData);
+    
+    if (!cid) throw new Error('Failed to upload imported post to IPFS');
+    
+    // Store post metadata
+    const metadataResult = storePostMetadata(cid, {
+      type: 'imported',
+      authorDid: authorInfo.did,
+      authorName: authorInfo.displayName || `User-${authorInfo.wallet?.substring(2, 8)}`,
+      visibility: data.visibility || 'public',
+      source: metadata.source,
+      url: data.url,
+      contentPreview: data.comment ? 
+        data.comment.substring(0, 100) + (data.comment.length > 100 ? '...' : '') : 
+        `Imported from ${metadata.source}`
+    });
+    
+    if (!metadataResult) throw new Error('Failed to store imported post metadata');
+    
+    return {
+      success: true,
+      cid,
+      source: metadata.source,
+      postData
+    };
+  } catch (error) {
+    console.error('Error creating imported post:', error);
+    throw error;
+  }
+};
