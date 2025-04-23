@@ -21,6 +21,14 @@ export default function Home() {
         </div>
       </Link>
 
+      <Link href={'/dashboard'}>
+        <div className='flex w-40 h-12 justify-center items-center
+         rounded-xl border border-white text-white font-semibold
+         text-md hover:bg-white hover:text-[#2FD7A2] '>
+          <p>Dashboard</p>
+        </div>
+      </Link>
+
       <Link href={'/login'}>
         <div className='flex w-40 h-12 justify-center items-center
          rounded-xl border border-white text-white font-semibold
