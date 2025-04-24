@@ -40,8 +40,8 @@ export default function Registration() {
         console.log('DID resolver initialized successfully');
         
         // Initialize ethers provider - connecting directly to public node
-        // Updated to use new ethers provider syntax
-        const provider = new ethers.JsonRpcProvider(providerConfig.rpcUrl);
+        // Using ethers v5 syntax
+        const provider = new ethers.providers.JsonRpcProvider(providerConfig.networks[0].rpcUrl);
         setEthersProvider(provider);
         console.log('Ethers provider initialized successfully');
       } catch (err) {
@@ -66,12 +66,12 @@ export default function Registration() {
       }
 
       // Connect directly to the user's wallet - no intermediary server
-      // Updated to use new ethers BrowserProvider syntax
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      // Using ethers v5 syntax
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
       
       // Request account access from user's wallet
-      const accounts = await provider.send("eth_requestAccounts", []);
-      const signer = await provider.getSigner();
+      await window.ethereum.request({ method: 'eth_requestAccounts' });
+      const signer = provider.getSigner();
       const address = await signer.getAddress();
       
       if (address) {
@@ -153,12 +153,13 @@ export default function Registration() {
         
         // If we have a key pair, register the public key on the blockchain
         if (keyPair) {
-          // Get signer for blockchain transaction
-          const provider = new ethers.BrowserProvider(window.ethereum);
-          const signer = await provider.getSigner();
+          // Get signer for blockchain transaction - using ethers v5 syntax
+          const provider = new ethers.providers.Web3Provider(window.ethereum);
+          const signer = provider.getSigner();
           
           // Register the public key on the blockchain using our utility function
-          await registerPublicKeyOnChain(signer, keyPair.publicKey);
+          // Pass the DID as the userId to ensure we can retrieve it later
+          await registerPublicKeyOnChain(signer, keyPair.publicKey, didIdentifier);
         } else {
           throw new Error('Communication keys were not generated properly');
         }

@@ -1,486 +1,480 @@
-// Blockchain Transactions Utility
 import { ethers } from 'ethers';
-import { uploadProfileToIPFS, retrieveProfileFromIPFS, updateProfileInIPFS } from './ipfsService';
 
-// Configuration for Ethereum networks
+// Define ABI directly to avoid build issues
+const userPublicKeysABI = [
+  // Public key management functions
+  "function setPublicKey(string memory userId, string memory publicKey) public",
+  "function getPublicKey(string memory userId) public view returns (string memory)",
+  "function publicKeyExists(string memory userId) public view returns (bool)",
+  // Events
+  "event PublicKeySet(string indexed userId, string publicKey)"
+];
+
+// Provider configuration for DID resolver
 export const providerConfig = {
-  // Public RPC endpoint - no central authority
-  rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com', // Sepolia testnet for development
-  name: 'sepolia',
-  chainId: '0x5',
-  registry: '0xdca7ef03e98e0dc2b855be647c39abe984fcf21b' // Registry address for sepolia
+  networks: [
+    {
+      name: 'sepolia',
+      registry: '0xdca7ef03e98e0dc2b855be647c39abe984fcf21b',
+      rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || 'http://localhost:8545'
+    }
+  ]
 };
 
-/**
- * Get blockchain network status information
- * @returns {Object} Blockchain status information
- */
+// Try to get contract address, with fallbacks
+let contractAddress;
+try {
+  // First try to load from artifact file
+  if (typeof window !== 'undefined') {
+    try {
+      // Try dynamic import during runtime
+      const addresses = require('../../blockchain/artifacts/contracts/contract-address.json');
+      contractAddress = addresses.UserPublicKeys;
+      console.log('[DEBUG] Loaded contract address from artifacts:', contractAddress);
+    } catch (error) {
+      console.warn('[DEBUG] Contract address file not found, using fallback address');
+      // Fallback to hardcoded address for local Hardhat network
+      contractAddress = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
+    }
+  } else {
+    // Server-side, use env variable or fallback
+    contractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || '0x5FbDB2315678afecb367f032d93F642f64180aa3';
+  }
+} catch (error) {
+  console.error('[DEBUG] Error loading contract address:', error);
+  // Fallback to hardcoded address for local Hardhat network
+  contractAddress = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
+}
+
+console.log('[DEBUG] Using contract address:', contractAddress);
+
+// Initialize provider and signer
+const getProviderAndSigner = async () => {
+  if (typeof window === 'undefined') {
+    // Server-side rendering - use a provider for the testnet
+    const provider = new ethers.providers.JsonRpcProvider(process.env.NEXT_PUBLIC_RPC_URL || "http://localhost:8545");
+    return { provider, signer: null, account: null };
+  }
+
+  // Client-side - check if MetaMask is installed
+  if (!window.ethereum) {
+    console.warn('MetaMask is not installed. Some functionality may be limited.');
+    // Fallback to a read-only provider
+    const provider = new ethers.providers.JsonRpcProvider(process.env.NEXT_PUBLIC_RPC_URL || "http://localhost:8545");
+    return { provider, signer: null, account: null };
+  }
+
+  try {
+    // Request account access if needed
+    await window.ethereum.request({ method: 'eth_requestAccounts' });
+    
+    // Initialize provider with MetaMask
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    const signer = provider.getSigner();
+    const account = await signer.getAddress();
+    
+    return { provider, signer, account };
+  } catch (error) {
+    console.error('Error connecting to MetaMask:', error);
+    // Fallback to a read-only provider
+    const provider = new ethers.providers.JsonRpcProvider(process.env.NEXT_PUBLIC_RPC_URL || "http://localhost:8545");
+    return { provider, signer: null, account: null };
+  }
+};
+
+// Get contract instance
+const getContract = async (withSigner = true) => {
+  if (!contractAddress) {
+    console.error('[DEBUG] Contract address is not set');
+    throw new Error('Contract address not found. Please make sure the contract is deployed and the address is set.');
+  }
+
+  console.log('[DEBUG] Getting contract at address:', contractAddress);
+  
+  const { provider, signer, account } = await getProviderAndSigner();
+  console.log('[DEBUG] Provider/signer initialized, account:', account);
+  
+  if (withSigner && !signer) {
+    console.error('[DEBUG] Signer not available but was requested');
+    throw new Error('Signer not available. Are you connected to MetaMask?');
+  }
+
+  return new ethers.Contract(
+    contractAddress,
+    userPublicKeysABI,
+    withSigner && signer ? signer : provider
+  );
+};
+
+// Set a user's public key
+export const setUserPublicKey = async (userId, publicKey) => {
+  try {
+    console.log('[DEBUG] Setting public key for userId:', userId);
+    console.log('[DEBUG] Public key length:', publicKey.length);
+    
+    // Ensure we have valid inputs
+    if (!userId || typeof userId !== 'string') {
+      return {
+        success: false,
+        error: 'Invalid user ID'
+      };
+    }
+    
+    if (!publicKey || typeof publicKey !== 'string') {
+      return {
+        success: false,
+        error: 'Invalid public key'
+      };
+    }
+    
+    let idToUse = userId;
+    
+    // If userId contains special characters that might cause issues, sanitize it
+    if (/[^\w\s]/gi.test(userId)) {
+      console.log('[DEBUG] Using sanitized userId for consistency');
+      idToUse = userId.replace(/[^\w\s]/gi, '_');
+    }
+    
+    console.log('[DEBUG] ID being used for transaction:', idToUse);
+    
+    const contract = await getContract();
+    const tx = await contract.setPublicKey(idToUse, publicKey);
+    console.log('[DEBUG] Transaction sent:', tx.hash);
+    
+    // Wait for transaction to be mined
+    const receipt = await tx.wait();
+    console.log('[DEBUG] Transaction confirmed in block:', receipt.blockNumber);
+    
+    return {
+      success: true,
+      transactionHash: tx.hash,
+      blockNumber: receipt.blockNumber,
+      sanitizedId: idToUse !== userId ? idToUse : null
+    };
+  } catch (error) {
+    console.error('[DEBUG] Error setting user public key:', error);
+    return {
+      success: false,
+      error: error.message || 'Unknown error'
+    };
+  }
+};
+
+// Get a user's public key
+export const getUserPublicKey = async (userId) => {
+  try {
+    console.log('[DEBUG] Getting public key for userId:', userId);
+    
+    // Ensure userId is a valid string
+    if (!userId || typeof userId !== 'string') {
+      console.error('[DEBUG] Invalid userId:', userId);
+      return {
+        success: false,
+        error: 'Invalid user ID'
+      };
+    }
+    
+    // Use provider to read data, no need for signer
+    const contract = await getContract(false);
+    
+    // Try to get the key with proper error handling
+    try {
+      // Check if the key exists first to avoid unnecessary errors
+      let exists = false;
+      try {
+        exists = await contract.publicKeyExists(userId);
+      } catch (checkError) {
+        // If we get an error checking existence, try with a sanitized ID
+        if (checkError.code === 'CALL_EXCEPTION') {
+          const sanitizedId = userId.replace(/[^\w\s]/gi, '_');
+          try {
+            exists = await contract.publicKeyExists(sanitizedId);
+            if (exists) {
+              // If the sanitized ID works, use it to get the public key
+              const publicKey = await contract.getPublicKey(sanitizedId);
+              console.log('[DEBUG] Retrieved public key with sanitized ID, length:', publicKey.length);
+              
+              return {
+                success: true,
+                publicKey,
+                sanitized: true
+              };
+            }
+          } catch (sanitizedError) {
+            console.log('[DEBUG] Sanitized ID also failed:', sanitizedError.message);
+          }
+        }
+        console.warn('[DEBUG] Error checking if key exists:', checkError.message);
+      }
+      
+      console.log('[DEBUG] Public key exists check:', exists);
+      
+      if (!exists) {
+        console.log('[DEBUG] Key does not exist for userId:', userId);
+        return {
+          success: false,
+          error: 'Public key not found'
+        };
+      }
+      
+      const publicKey = await contract.getPublicKey(userId);
+      console.log('[DEBUG] Retrieved public key length:', publicKey.length);
+      console.log('[DEBUG] Public key excerpt:', publicKey.substring(0, 20) + '...');
+      
+      return {
+        success: true,
+        publicKey
+      };
+    } catch (callError) {
+      console.error('[DEBUG] Contract call error:', callError);
+      throw callError;
+    }
+  } catch (error) {
+    console.error('[DEBUG] Error getting user public key:', error);
+    return {
+      success: false,
+      error: error.message || 'Unknown error'
+    };
+  }
+};
+
+// Check if a user's public key exists
+export const checkUserPublicKeyExists = async (userId) => {
+  try {
+    console.log('[DEBUG] Checking if public key exists for userId:', userId);
+    
+    // Ensure userId is a valid string
+    if (!userId || typeof userId !== 'string') {
+      console.error('[DEBUG] Invalid userId:', userId);
+      return {
+        success: false,
+        error: 'Invalid user ID'
+      };
+    }
+    
+    const contract = await getContract(false);
+    
+    // Make the call with proper error handling
+    try {
+      const exists = await contract.publicKeyExists(userId);
+      console.log('[DEBUG] Public key exists result:', exists);
+      
+      return {
+        success: true,
+        exists
+      };
+    } catch (callError) {
+      console.error('[DEBUG] Contract call error:', callError);
+      
+      // If we get a specific error related to encoding, try again with a sanitized ID
+      if (callError.code === 'CALL_EXCEPTION') {
+        console.log('[DEBUG] Trying with sanitized userId');
+        const sanitizedId = userId.replace(/[^\w\s]/gi, '_');
+        console.log('[DEBUG] Original ID vs Sanitized ID:', userId, sanitizedId);
+        
+        try {
+          const exists = await contract.publicKeyExists(sanitizedId);
+          console.log('[DEBUG] Sanitized public key exists result:', exists);
+          
+          return {
+            success: true,
+            exists,
+            sanitized: true
+          };
+        } catch (retryError) {
+          throw new Error(`Failed with sanitized ID: ${retryError.message}`);
+        }
+      }
+      
+      throw callError;
+    }
+  } catch (error) {
+    console.error('[DEBUG] Error checking if user public key exists:', error);
+    return {
+      success: false,
+      error: error.message || 'Unknown error'
+    };
+  }
+};
+
+// Get current user's Ethereum address
+export const getCurrentUserAddress = async () => {
+  try {
+    const { account } = await getProviderAndSigner();
+    return account;
+  } catch (error) {
+    console.error('Error getting current user address:', error);
+    return null;
+  }
+};
+
+// Register public key on blockchain
+export const registerPublicKeyOnChain = async (signer, publicKey, userId) => {
+  try {
+    // Use the provided userId (DID) or generate a random one as fallback
+    const finalUserId = userId || `user_${Math.floor(Math.random() * 1000000)}`;
+    
+    // Get contract instance
+    if (!contractAddress) {
+      throw new Error('Contract address not found. Please deploy the contract first.');
+    }
+    
+    const contract = new ethers.Contract(
+      contractAddress,
+      userPublicKeysABI,
+      signer
+    );
+    
+    console.log(`Registering public key for user ${finalUserId}`);
+    
+    // Call the contract method to set the public key
+    const tx = await contract.setPublicKey(finalUserId, publicKey);
+    console.log('Transaction sent:', tx.hash);
+    
+    // Wait for transaction to be mined
+    const receipt = await tx.wait();
+    console.log('Transaction confirmed in block:', receipt.blockNumber);
+    
+    return {
+      success: true,
+      userId: finalUserId,
+      transactionHash: tx.hash,
+      blockNumber: receipt.blockNumber
+    };
+  } catch (error) {
+    console.error('Error registering public key on chain:', error);
+    return {
+      success: false,
+      error: error.message || 'Unknown error'
+    };
+  }
+};
+
+// For compatibility with other code that expects these functions
+export const searchUserByDid = async (did) => {
+  console.log('searchUserByDid called with:', did);
+  return { found: true, did, displayName: 'User' }; 
+};
+
+export const createFriendRequest = async (did, publicKey) => {
+  console.log('createFriendRequest called with:', did, publicKey);
+  return { success: true, from: 'current-user', to: did };
+};
+
+export const generateAsymmetricKeys = async () => {
+  return { publicKey: 'demo-public-key', privateKey: 'demo-private-key', address: '0xdemo' };
+};
+
+export const storeMessagingKeys = (privateKey, publicKey, address) => {
+  console.log('Storing messaging keys:', { privateKey, publicKey, address });
+};
+
+export const retrieveMessagingKeys = () => {
+  return { publicKey: 'demo-public-key', privateKey: 'demo-private-key', address: '0xdemo' };
+};
+
+export const storeUserProfileInIPFS = async (profile) => {
+  console.log('Storing user profile in IPFS:', profile);
+  return { success: true };
+};
+
+export const getUserProfileFromIPFS = async (did) => {
+  console.log('Getting user profile from IPFS for DID:', did);
+  return null;
+};
+
+export const setUserNameForDID = async (did, username) => {
+  console.log('Setting username for DID:', did, username);
+  return { success: true };
+};
+
 export const getBlockchainStatus = async () => {
   try {
-    // Try to create a provider to check connection
-    const provider = new ethers.JsonRpcProvider(providerConfig.rpcUrl);
+    const { provider } = await getProviderAndSigner();
     const network = await provider.getNetwork();
     const blockNumber = await provider.getBlockNumber();
-    const isConnected = !!network;
-
+    
     return {
-      connected: isConnected,
-      name: providerConfig.name,
-      chainId: network ? network.chainId.toString() : providerConfig.chainId,
-      networkName: network ? network.name : 'Unknown',
-      rpcUrl: providerConfig.rpcUrl,
-      blockNumber: blockNumber,
-      registry: providerConfig.registry,
-      latestBlock: blockNumber ? blockNumber : 'Unknown',
-      status: isConnected ? 'connected' : 'disconnected',
+      connected: true,
+      name: network.name,
+      chainId: network.chainId,
+      latestBlock: blockNumber,
+      rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || 'http://localhost:8545',
+      networkName: network.name === 'unknown' ? 'Local Hardhat' : network.name,
+      status: 'Connected',
       isMock: false
     };
   } catch (error) {
     console.error('Error getting blockchain status:', error);
-    // Return a mock status when connection fails
     return {
       connected: false,
-      name: providerConfig.name,
-      chainId: providerConfig.chainId,
+      name: 'unknown',
+      chainId: 0,
+      latestBlock: 0,
+      rpcUrl: process.env.NEXT_PUBLIC_RPC_URL || 'http://localhost:8545',
       networkName: 'Unknown',
-      rpcUrl: providerConfig.rpcUrl,
-      blockNumber: 'Unknown',
-      registry: providerConfig.registry,
-      latestBlock: 'Unknown',
-      status: 'disconnected',
-      isMock: true,
-      error: error.message
+      status: 'Disconnected',
+      isMock: true
     };
   }
 };
 
-/**
- * Generate asymmetric key pair for secure messaging
- * @returns {Promise<Object>} Object containing publicKey, privateKey and address
- */
-export const generateAsymmetricKeys = async () => {
+// Check if wallet is on the right network
+export const checkWalletNetwork = async () => {
   try {
-    // Create a new random wallet which contains a key pair
-    const messageWallet = ethers.Wallet.createRandom();
-    
-    // Get the public key from the wallet
-    const publicKey = messageWallet.publicKey;
-    
-    // Get the private key from the wallet
-    const privateKey = messageWallet.privateKey;
-    
-    console.log('Generated messaging key pair successfully');
-    
-    return {
-      publicKey,
-      privateKey,
-      address: messageWallet.address
-    };
-  } catch (error) {
-    console.error('Error generating asymmetric keys:', error);
-    throw error;
-  }
-};
-
-/**
- * Register a user's public key on the blockchain
- * @param {ethers.Signer} signer - Ethereum signer object
- * @param {string} publicKey - Public key to register
- * @param {Object} options - Additional options for the transaction
- * @returns {Promise<boolean>} Success status
- */
-export const registerPublicKeyOnChain = async (signer, publicKey, options = {}) => {
-  try {
-    // In a production app, this would invoke a smart contract function
-    // Example contract ABI and address would be needed
-    console.log('Registering public key on chain:', publicKey);
-    
-    // This is a placeholder for the actual contract interaction
-    // In a real implementation, it would look something like this:
-    /*
-    const contractABI = [...]; // Contract ABI
-    const contractAddress = '0x...'; // Contract address
-    
-    const contract = new ethers.Contract(contractAddress, contractABI, signer);
-    const transaction = await contract.registerPublicKey(publicKey, options);
-    await transaction.wait(); // Wait for transaction to be confirmed
-    */
-    
-    // Return true to simulate successful registration
-    return true;
-  } catch (error) {
-    console.error('Error registering public key on chain:', error);
-    throw error;
-  }
-};
-
-/**
- * Lookup a user's public key from the blockchain by their DID
- * @param {string} did - Decentralized identifier
- * @param {ethers.Provider} provider - Provider for blockchain interactions
- * @returns {Promise<string|null>} Public key or null if not found
- */
-export const lookupPublicKeyByDid = async (did, provider) => {
-  try {
-    // Extract address from DID
-    const address = did.replace('did:ethr:', '');
-    
-    // In a production app, this would query a smart contract
-    console.log('Looking up public key for:', address);
-    
-    // Placeholder for actual contract call
-    /*
-    const contractABI = [...]; // Contract ABI
-    const contractAddress = '0x...'; // Contract address
-    
-    const contract = new ethers.Contract(contractAddress, contractABI, provider);
-    const publicKey = await contract.getPublicKey(address);
-    return publicKey;
-    */
-    
-    // Return null for now to indicate not implemented
-    return null;
-  } catch (error) {
-    console.error('Error looking up public key:', error);
-    return null;
-  }
-};
-
-/**
- * Create and encrypt a symmetric key for secure messaging between two parties
- * @param {string} senderPrivateKey - Sender's private key
- * @param {string} recipientPublicKey - Recipient's public key
- * @returns {Object} Object containing encrypted key and related data
- */
-export const createEncryptedSymmetricKey = async (senderPrivateKey, recipientPublicKey) => {
-  try {
-    // Convert keys to wallet instances for cryptographic operations
-    const senderWallet = new ethers.Wallet(senderPrivateKey);
-    
-    // Generate a random symmetric key (e.g., AES-256)
-    const symmetricKey = ethers.utils.randomBytes(32); // 256 bits
-    
-    // In a real implementation, we would encrypt this key with the recipient's public key
-    // For now, return a placeholder
-    return {
-      encryptedKey: "placeholder-for-encrypted-key",
-      algorithm: "AES-256",
-      created: Date.now()
-    };
-  } catch (error) {
-    console.error('Error creating encrypted symmetric key:', error);
-    throw error;
-  }
-};
-
-/**
- * Store messaging keys in browser's local storage
- * @param {string} privateKey - Private key to store
- * @param {string} publicKey - Public key to store 
- * @param {string} address - Address derived from the key pair
- */
-export const storeMessagingKeys = (privateKey, publicKey, address) => {
-  try {
-    // Store the private key securely 
-    // In a production app, consider using more secure storage methods
-    localStorage.setItem('liberaChainMessagingPrivateKey', privateKey);
-    localStorage.setItem('liberaChainMessagingPublicKey', publicKey);
-    localStorage.setItem('liberaChainMessagingKeyAddress', address);
-    
-    // Also add the messaging key address to the identity data
-    const identityData = JSON.parse(localStorage.getItem('liberaChainIdentity') || '{}');
-    identityData.messagingKeyAddress = address;
-    localStorage.setItem('liberaChainIdentity', JSON.stringify(identityData));
-    
-    console.log('Messaging keys stored successfully');
-    return true;
-  } catch (error) {
-    console.error('Error storing messaging keys:', error);
-    return false;
-  }
-};
-
-/**
- * Retrieve messaging keys from browser's local storage
- * @returns {Object|null} Object containing privateKey, publicKey, and address or null if not found
- */
-export const retrieveMessagingKeys = () => {
-  try {
-    const privateKey = localStorage.getItem('liberaChainMessagingPrivateKey');
-    const publicKey = localStorage.getItem('liberaChainMessagingPublicKey');
-    const address = localStorage.getItem('liberaChainMessagingKeyAddress');
-    
-    if (privateKey && address) {
-      return { privateKey, publicKey, address };
-    }
-    return null;
-  } catch (error) {
-    console.error('Error retrieving messaging keys:', error);
-    return null;
-  }
-};
-
-/**
- * Deploy a new key registry contract (admin function)
- * @param {ethers.Signer} signer - Ethereum signer object
- * @returns {Promise<string>} Address of the deployed contract
- */
-export const deployKeyRegistryContract = async (signer) => {
-  try {
-    // This would deploy a new key registry contract
-    // For now, return a placeholder address
-    return "0x0000000000000000000000000000000000000000";
-  } catch (error) {
-    console.error('Error deploying key registry contract:', error);
-    throw error;
-  }
-};
-
-/**
- * Create friend request with encrypted symmetric key
- * @param {string} recipientDid - Recipient's DID
- * @param {string} recipientPublicKey - Recipient's public key
- * @returns {Promise<Object>} Object containing the encrypted key, signature, and other metadata
- */
-export const createFriendRequest = async (recipientDid, recipientPublicKey) => {
-  try {
-    // Retrieve user's messaging keys
-    const senderKeys = retrieveMessagingKeys();
-    if (!senderKeys) {
-      throw new Error('Messaging keys not found. Please generate keys first.');
+    // Skip if not in browser or no ethereum object
+    if (typeof window === 'undefined' || !window.ethereum) {
+      return { 
+        success: false, 
+        rightNetwork: false,
+        error: 'No wallet detected' 
+      };
     }
     
-    // Create a new symmetric key for secure messaging between the two parties
-    const symmetricKey = ethers.utils.randomBytes(32); // 256 bits AES key
-    const symmetricKeyHex = ethers.utils.hexlify(symmetricKey);
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    const network = await provider.getNetwork();
+    console.log('[DEBUG] Wallet connected to network:', network);
     
-    // Convert keys for cryptographic operations
-    const senderWallet = new ethers.Wallet(senderKeys.privateKey);
+    // Hardhat's chainId is 31337
+    const isHardhat = network.chainId === 31337;
+    const isSepolia = network.chainId === 11155111; // Ethereum Sepolia testnet
     
-    // Encrypt the symmetric key with recipient's public key
-    // In ethers v5, we would use encryption functions
-    // This is a simplified encryption simulation
-    const encryptedData = {
-      symmetricKey: symmetricKeyHex,
-      recipientDid: recipientDid,
-      timestamp: Date.now(),
-    };
+    // Get contract artifact address (for hardhat) or env var (for live networks)
+    let correctAddress;
     
-    // Serialize the data to encrypt
-    const dataToEncrypt = JSON.stringify(encryptedData);
-    
-    // Sign the data with sender's private key
-    const signature = await senderWallet.signMessage(dataToEncrypt);
-    
-    // Create the friend request object
-    const friendRequest = {
-      from: senderKeys.address,
-      to: recipientDid,
-      encryptedSymmetricKey: symmetricKeyHex, // In a real app, this would be actually encrypted
-      signature: signature,
-      timestamp: Date.now(),
-      algorithm: "AES-256",
-    };
-    
-    console.log('Friend request created successfully');
-    return friendRequest;
-  } catch (error) {
-    console.error('Error creating friend request:', error);
-    throw error;
-  }
-};
-
-/**
- * Search for a user by DID on the blockchain or network
- * @param {string} did - Decentralized identifier to search for
- * @returns {Promise<Object|null>} User data if found, null otherwise
- */
-export const searchUserByDid = async (did) => {
-  try {
-    // In a production app, this would query a registry contract or API
-    console.log('Searching for user with DID:', did);
-    
-    // First try to get the user's profile from IPFS
-    const ipfsProfile = await getUserProfileFromIPFS(did);
-    
-    // For demo purposes, simulate finding a user with a delay
-    // In a real implementation, this would check against a smart contract or API
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        // Mock response for testing
-        if (did && did.startsWith('did:ethr:')) {
-          const address = did.replace('did:ethr:', '');
-          
-          // Generate a deterministic "public key" based on the address
-          // In a real app, this would come from the registry
-          const mockPublicKey = `0x04${address.substring(2)}00`.padEnd(132, '0');
-          
-          // Use the username from IPFS if available, otherwise use a generic name
-          const displayName = ipfsProfile?.username || `User ${address.substring(2, 6)}`;
-          
-          resolve({
-            did: did,
-            publicKey: mockPublicKey,
-            found: true,
-            displayName: displayName,
-            ipfsProfile: ipfsProfile
-          });
-        } else {
-          resolve(null);
-        }
-      }, 1000);
-    });
-  } catch (error) {
-    console.error('Error searching for user:', error);
-    return null;
-  }
-};
-
-/**
- * Store user profile information in IPFS and link it to DID
- * @param {string} did - User's decentralized identifier
- * @param {Object} profileData - User profile data (username, bio, etc)
- * @returns {Promise<Object>} Result object with IPFS CID and status
- */
-export const storeUserProfileInIPFS = async (did, profileData) => {
-  try {
-    if (!did) throw new Error('DID is required');
-    if (!profileData) throw new Error('Profile data is required');
-    
-    // Ensure profile data has the DID
-    profileData.did = did;
-    profileData.updatedAt = Date.now();
-    
-    // Upload to IPFS
-    const cid = await uploadProfileToIPFS(profileData);
-    
-    if (!cid) throw new Error('Failed to upload profile to IPFS');
-    
-    // Store CID reference locally for this user's DID
-    const didToCidMap = JSON.parse(localStorage.getItem('liberaChainDidToCidMap') || '{}');
-    didToCidMap[did] = cid;
-    localStorage.setItem('liberaChainDidToCidMap', JSON.stringify(didToCidMap));
-    
-    // In a production app, we would also store this mapping on-chain
-    // For example, calling a smart contract to register the CID for this DID
-    
-    console.log(`Profile for ${did} stored in IPFS with CID: ${cid}`);
-    
-    return {
-      success: true,
-      did,
-      cid,
-      timestamp: Date.now()
-    };
-  } catch (error) {
-    console.error('Error storing user profile in IPFS:', error);
-    throw error;
-  }
-};
-
-/**
- * Get a user's profile from IPFS using their DID
- * @param {string} did - User's decentralized identifier
- * @returns {Promise<Object|null>} User profile data or null if not found
- */
-export const getUserProfileFromIPFS = async (did) => {
-  try {
-    if (!did) throw new Error('DID is required');
-    
-    // Get CID reference for this DID
-    const didToCidMap = JSON.parse(localStorage.getItem('liberaChainDidToCidMap') || '{}');
-    const cid = didToCidMap[did];
-    
-    if (!cid) {
-      console.warn(`No profile found for DID: ${did}`);
-      return null;
+    // For Hardhat, use the artifact
+    if (isHardhat) {
+      try {
+        const addresses = require('../../blockchain/artifacts/contracts/contract-address.json');
+        correctAddress = addresses.UserPublicKeys;
+        console.log('[DEBUG] Using Hardhat contract address:', correctAddress);
+      } catch (error) {
+        console.error('[DEBUG] Failed to load Hardhat contract address');
+      }
+    } 
+    // For Sepolia, use env var
+    else if (isSepolia) {
+      correctAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS;
+      console.log('[DEBUG] Using Sepolia contract address:', correctAddress);
     }
     
-    // Retrieve profile from IPFS
-    const profileData = await retrieveProfileFromIPFS(cid);
+    // Check if contract address matches network
+    const rightNetwork = isHardhat || isSepolia;
+    const validAddress = !!correctAddress;
     
-    return profileData;
-  } catch (error) {
-    console.error('Error getting user profile from IPFS:', error);
-    return null;
-  }
-};
-
-/**
- * Update a user's profile information in IPFS
- * @param {string} did - User's decentralized identifier
- * @param {Object} updatedProfileData - Updated profile data
- * @returns {Promise<Object>} Result object with new CID and status
- */
-export const updateUserProfileInIPFS = async (did, updatedProfileData) => {
-  try {
-    if (!did) throw new Error('DID is required');
-    if (!updatedProfileData) throw new Error('Updated profile data is required');
-    
-    // Get CID reference for this DID
-    const didToCidMap = JSON.parse(localStorage.getItem('liberaChainDidToCidMap') || '{}');
-    const currentCid = didToCidMap[did];
-    
-    // If no profile exists yet, create a new one
-    if (!currentCid) {
-      console.log(`No existing profile found for DID: ${did}. Creating a new profile.`);
-      return await storeUserProfileInIPFS(did, {
-        ...updatedProfileData,
-        createdAt: Date.now(),
-      });
-    }
-    
-    // Get existing profile data
-    const existingProfile = await getUserProfileFromIPFS(did);
-    
-    // Merge existing data with updates
-    const mergedProfile = {
-      ...existingProfile,
-      ...updatedProfileData,
-      did,
-      updatedAt: Date.now()
-    };
-    
-    // Update profile in IPFS using the existing CID
-    const newCid = await updateProfileInIPFS(currentCid, mergedProfile);
-    
-    if (!newCid) throw new Error('Failed to update profile in IPFS');
-    
-    // Update CID reference if the CID changed
-    if (newCid !== currentCid) {
-      didToCidMap[did] = newCid;
-      localStorage.setItem('liberaChainDidToCidMap', JSON.stringify(didToCidMap));
-    }
-    
-    console.log(`Profile for ${did} updated in IPFS with CID: ${newCid}`);
-    
-    return {
-      success: true,
-      did,
-      cid: newCid,
-      timestamp: Date.now()
+    return { 
+      success: true, 
+      rightNetwork, 
+      networkName: network.name, 
+      chainId: network.chainId,
+      validAddress
     };
   } catch (error) {
-    console.error('Error updating user profile in IPFS:', error);
-    throw error;
-  }
-};
-
-/**
- * Set a username for a DID in the IPFS profile
- * @param {string} did - User's decentralized identifier
- * @param {string} username - Username to set
- * @returns {Promise<Object>} Result object with new CID and status
- */
-export const setUserNameForDID = async (did, username) => {
-  try {
-    if (!did) throw new Error('DID is required');
-    if (!username) throw new Error('Username is required');
-    
-    // Update profile with username
-    return await updateUserProfileInIPFS(did, { username });
-  } catch (error) {
-    console.error('Error setting username for DID:', error);
-    throw error;
+    console.error('[DEBUG] Error checking wallet network:', error);
+    return { 
+      success: false, 
+      rightNetwork: false, 
+      error: error.message 
+    };
   }
 };

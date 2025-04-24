@@ -16,6 +16,7 @@ import {
   getBlockchainStatus
 } from '../utils/blockchainTransactions';
 import { hasIpfsCredentials, getIpfsStatus } from '../utils/ipfsService';
+import PublicKeyManager from '../components/blockchain/PublicKeyManager';
 import { QRCodeCanvas } from 'qrcode.react';
 import { Html5Qrcode } from 'html5-qrcode';
 
@@ -856,6 +857,26 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
+          </div>
+          
+          {/* Blockchain Public Key Manager Section */}
+          <div className="mt-8 bg-gray-800 rounded-lg shadow p-6 border border-gray-700">
+            <h2 className="text-lg font-medium text-white">Blockchain Public Key Manager</h2>
+            <p className="mt-1 text-sm text-gray-400">
+              Publish your public key to the Ethereum blockchain for secure, decentralized access
+            </p>
+            
+            {profileData && profileData.did && (
+              <PublicKeyManager userId={profileData.did} />
+            )}
+            
+            {!profileData?.did && (
+              <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-800 rounded-md">
+                <p className="text-yellow-400 text-sm">
+                  Please complete your profile to manage your blockchain public key
+                </p>
+              </div>
+            )}
           </div>
           
           {/* My Friends Section */}
