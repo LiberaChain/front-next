@@ -112,7 +112,15 @@ contract BlockchainPosts {
     /**
      * @dev Get a post by its ID
      * @param _postId The post ID
-     * @return Post details
+     * @return content The post content
+     * @return title The post title
+     * @return authorDid Author's DID
+     * @return authorName Author's name
+     * @return contentType Type of content
+     * @return timestamp Post creation timestamp
+     * @return visibility Post visibility setting
+     * @return ipfsCid IPFS CID reference (if any)
+     * @return metadata Additional post metadata
      */
     function getPost(bytes32 _postId) public view returns (
         string memory content,

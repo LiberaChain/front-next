@@ -72,6 +72,42 @@
       "artifacts": [
         "UserRegistry"
       ]
+    },
+    "/home/ziga/projects/liberachain/front-next/blockchain/contracts/BlockchainPosts.sol": {
+      "lastModificationDate": 1745500826467,
+      "contentHash": "e537a687050ea986756f3edae213bdb7",
+      "sourceName": "blockchain/contracts/BlockchainPosts.sol",
+      "solcConfig": {
+        "version": "0.8.24",
+        "settings": {
+          "evmVersion": "paris",
+          "optimizer": {
+            "enabled": false,
+            "runs": 200
+          },
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.0"
+      ],
+      "artifacts": [
+        "BlockchainPosts"
+      ]
     }
   }
 }
