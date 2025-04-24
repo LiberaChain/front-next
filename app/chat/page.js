@@ -288,13 +288,13 @@ export default function Home() {
 
   if (loadingFriends || !initialized) {
     return (
-      <div className="flex h-screen bg-gray-100 items-center justify-center">
+      <div className="flex h-screen animate-gradient bg-gradient-to-br from-gray-900 to-gray-800 items-center justify-center">
         <div className="text-center">
           <svg className="animate-spin h-10 w-10 mx-auto text-emerald-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
           </svg>
-          <p className="mt-3 text-base text-gray-600">Loading your conversations...</p>
+          <p className="mt-3 text-base text-gray-300">Loading your conversations...</p>
         </div>
       </div>
     );
@@ -305,7 +305,7 @@ export default function Home() {
   const hasRealFriends = friendsList.length > 0;
 
   return (
-    <div className="flex h-screen bg-gray-100 relative">
+    <div className="flex h-screen animate-gradient bg-gradient-to-br from-gray-900 to-gray-800 relative">
       <Head>
         <title>LiberaChain Messenger</title>
         <meta name="description" content="A decentralized messenger app built with Next.js" />
@@ -314,16 +314,16 @@ export default function Home() {
 
       {qrIsVisible ? (
         <div className='w-8/10 h-8/10 md:w-120 md:h-120 top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-transparent-400 rounded-2xl absolute
-        z-100 flex flex-col justify-start items-center bg-white/10 backdrop-blur gap-20'>
+        z-100 flex flex-col justify-start items-center bg-gray-800/80 backdrop-blur gap-20'>
           
           <div className='h-5 md:h-1/10 w-full rounded-2xl bg-transparent flex justify-end p-2 relative'>
             <button onClick={() => {setQrIsVisible(false)}} className='hover:cursor-pointer'>
-              <img src={'./x.svg'} className='absolute w-5 md:w-9 top-1 right-1 md:top-2 md:right-2'></img>
+              <img src={'/x.svg'} className='absolute w-5 md:w-9 top-1 right-1 md:top-2 md:right-2'></img>
             </button>
           </div>
           
           <div className='w-full h-6/10 md:h-8/10 flex items-center justify-center p-2'>
-            <img src={'./qr.png'} className='w-full h-full object-contain'></img>
+            <img src={'/qr.png'} className='w-full h-full object-contain'></img>
           </div>
         </div>
       ) : (
@@ -331,33 +331,33 @@ export default function Home() {
       )}
 
       {/* Sidebar: Conversation List */}
-      <div className={`${isToggled ? "w-0" : "w-full"} md:w-1/3 bg-white border-r border-gray-200 overflow-hidden animate-gradient`}>
-        <div className="p-4 border-b border-gray-200 flex justify-between items-center gap-5 text-white">
+      <div className={`${isToggled ? "w-0" : "w-full"} md:w-1/3 bg-gray-800 border-r border-gray-700 overflow-hidden`}>
+        <div className="p-4 border-b border-gray-700 flex justify-between items-center gap-5">
           <Link href="/dashboard">
             <img src={'/logo.svg'} width={25} alt="LiberaChain Logo" />
           </Link>
-          <h1 className="text-xl font-semibold">Chats</h1>
+          <h1 className="text-xl font-semibold text-white">Chats</h1>
           <div className='flex justify-center items-center gap-2'>
             <button className='block hover:cursor-pointer'
             onClick={() => {setQrIsVisible(true)}}>
-              <img src={'./qr.svg'} alt="QR Code" />
+              <img src={'/qr.svg'} alt="QR Code" />
             </button>
 
             <button className="block md:hidden hover:cursor-pointer" onClick={() => {
               setIsToggled(!isToggled)
             }}>
-              <img src={'./menu.svg'} alt="Menu" />
+              <img src={'/menu.svg'} alt="Menu" />
             </button>
           </div>
         </div>
 
         {/* Toggle between demo and real friends if we have real friends */}
         {hasRealFriends && (
-          <div className="p-2 bg-gray-50 border-b border-gray-200">
+          <div className="p-2 bg-gray-700/50 border-b border-gray-700">
             <div className="flex justify-center">
               <button 
                 onClick={toggleFriendsView}
-                className="text-sm text-emerald-600 hover:text-emerald-800"
+                className="text-sm text-emerald-400 hover:text-emerald-300"
               >
                 {showingRealFriends ? "Show Demo Conversations" : "Show My Friends"}
               </button>
@@ -371,21 +371,21 @@ export default function Home() {
             <div
               key={item.did || item.id}
               onClick={() => handleConversationClick(item)}
-              className={`p-4 cursor-pointer hover:bg-gray-100 ${
-                selectedConversation?.did === item.did || selectedConversation?.id === item.id ? 'bg-gray-100' : ''
+              className={`p-4 cursor-pointer hover:bg-gray-700 ${
+                selectedConversation?.did === item.did || selectedConversation?.id === item.id ? 'bg-gray-700' : ''
               }`}
             >
               <div className="flex justify-between">
-                <h2 className="font-medium">{item.name}</h2>
-                <span className="text-sm text-gray-500">{item.timestamp}</span>
+                <h2 className="font-medium text-white">{item.name}</h2>
+                <span className="text-sm text-gray-400">{item.timestamp}</span>
               </div>
-              <p className="text-sm text-gray-600 truncate">{item.lastMessage}</p>
+              <p className="text-sm text-gray-400 truncate">{item.lastMessage}</p>
             </div>
           ))
         ) : showingRealFriends ? (
           <div className="p-8 text-center">
-            <div className="bg-gray-100 p-4 rounded-md">
-              <p className="text-gray-600 mb-4">You haven't added any friends yet</p>
+            <div className="bg-gray-700/50 p-4 rounded-md">
+              <p className="text-gray-300 mb-4">You haven't added any friends yet</p>
               <button 
                 onClick={handleAddFriends}
                 className="px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700"
@@ -396,7 +396,7 @@ export default function Home() {
           </div>
         ) : (
           <div className="p-8 text-center">
-            <p className="text-gray-600">No conversations available</p>
+            <p className="text-gray-400">No conversations available</p>
           </div>
         )}
       </div>
@@ -406,18 +406,18 @@ export default function Home() {
         {selectedConversation ? (
           <>
             {/* Chat Header */}
-            <div className="p-4 bg-white border-b border-gray-200 flex justify-between">
-              <h2 className="text-lg font-semibold">{selectedConversation.name}</h2>
+            <div className="p-4 bg-gray-800 border-b border-gray-700 flex justify-between">
+              <h2 className="text-lg font-semibold text-white">{selectedConversation.name}</h2>
 
               <button className="block md:hidden hover:cursor-pointer" onClick={() => {
                 setIsToggled(!isToggled)
               }}>
-                <img src={'./menu.svg'} alt="Menu" />
+                <img src={'/menu.svg'} alt="Menu" />
               </button>
             </div>
 
             {/* Messages */}
-            <div className="flex-1 p-4 overflow-y-auto bg-gray-50">
+            <div className="flex-1 p-4 overflow-y-auto bg-gray-800/50">
               {selectedConversation.did ? (
                 messages[selectedConversation.did] && messages[selectedConversation.did].length > 0 ? (
                   messages[selectedConversation.did].map((message) => (
@@ -430,8 +430,8 @@ export default function Home() {
                       <div
                         className={`max-w-xs p-3 rounded-lg ${
                           message.sender === 'You'
-                            ? 'bg-[#2FD7A2] text-white'
-                            : 'bg-gray-200 text-gray-800'
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-gray-700 text-gray-200'
                         }`}
                       >
                         <p>{message.text}</p>
@@ -442,8 +442,8 @@ export default function Home() {
                 ) : (
                   <div className="flex items-center justify-center h-full">
                     <div className="text-center">
-                      <p className="text-gray-500">No messages yet</p>
-                      <p className="text-sm text-gray-400 mt-1">Send a message to start chatting</p>
+                      <p className="text-gray-400">No messages yet</p>
+                      <p className="text-sm text-gray-500 mt-1">Send a message to start chatting</p>
                     </div>
                   </div>
                 )
@@ -458,8 +458,8 @@ export default function Home() {
                     <div
                       className={`max-w-xs p-3 rounded-lg ${
                         message.sender === 'You'
-                          ? 'bg-[#2FD7A2] text-white'
-                          : 'bg-gray-200 text-gray-800'
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-gray-700 text-gray-200'
                       }`}
                     >
                       <p>{message.text}</p>
@@ -471,29 +471,29 @@ export default function Home() {
             </div>
 
             {/* Message Input */}
-            <div className="p-4 bg-white border-t border-gray-200">
+            <div className="p-4 bg-gray-800 border-t border-gray-700">
               <form onSubmit={handleSendMessage} className="flex gap-2">
                 <input
                   type="text"
                   value={messageInput}
                   onChange={(e) => setMessageInput(e.target.value)}
                   placeholder="Type a message..."
-                  className="flex-1 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                  className="flex-1 p-2 border border-gray-600 bg-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-white placeholder-gray-400"
                 />
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-[#2FD7A2] text-white rounded-lg hover:bg-[#23B8BD] hover:cursor-pointer"
+                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 hover:cursor-pointer"
                 > Send
                 </button>
               </form>
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center">
+          <div className="flex-1 flex items-center justify-center bg-gray-800/50">
             <div className="text-center p-6">
-              <div className="bg-gray-50 rounded-lg p-6 max-w-md">
-                <h3 className="text-lg font-medium text-gray-700 mb-2">Welcome to LiberaChain Chat</h3>
-                <p className="text-gray-500 mb-4">Select a conversation from the sidebar to start chatting</p>
+              <div className="bg-gray-800/80 rounded-lg p-6 max-w-md border border-gray-700">
+                <h3 className="text-lg font-medium text-white mb-2">Welcome to LiberaChain Chat</h3>
+                <p className="text-gray-400 mb-4">Select a conversation from the sidebar to start chatting</p>
                 {showingRealFriends && friendsList.length === 0 && (
                   <button 
                     onClick={handleAddFriends}
