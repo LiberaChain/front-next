@@ -91,7 +91,45 @@ export const createBlockchainPost = async (postData, options = {}) => {
     const donationWei = ethers.utils.parseEther(donationAmount);
     const totalValue = feeWei.add(donationWei);
     
-    // Create transaction with fee + donation
+    // Get provider to estimate gas and gas price
+    const { provider } = await getProviderAndSigner();
+    
+    // Get current gas price and increase it slightly to avoid replacement
+    const currentGasPrice = await provider.getGasPrice();
+    
+    // For large donations, we need to ensure our gas settings are adequate
+    // Increase gas price by 20% to ensure transaction goes through
+    const gasPrice = currentGasPrice.mul(120).div(100);
+    
+    // Create transaction options with gas settings
+    const txOptions = {
+      value: totalValue,
+      gasLimit: 600000, // Set a reasonable gas limit
+      gasPrice: gasPrice
+    };
+    
+    // If using EIP-1559 compatible network, use maxFeePerGas instead
+    const network = await provider.getNetwork();
+    if (network.chainId !== 31337) { // Not Hardhat local
+      // Use EIP-1559 gas settings
+      const feeData = await provider.getFeeData();
+      if (feeData.maxFeePerGas) {
+        // EIP-1559 is supported
+        delete txOptions.gasPrice;
+        txOptions.maxFeePerGas = feeData.maxFeePerGas.mul(120).div(100);
+        txOptions.maxPriorityFeePerGas = feeData.maxPriorityFeePerGas.mul(120).div(100);
+      }
+    }
+    
+    console.log('Sending transaction with options:', {
+      value: ethers.utils.formatEther(totalValue),
+      ...txOptions,
+      gasPrice: txOptions.gasPrice ? ethers.utils.formatUnits(txOptions.gasPrice, 'gwei') + ' gwei' : undefined,
+      maxFeePerGas: txOptions.maxFeePerGas ? ethers.utils.formatUnits(txOptions.maxFeePerGas, 'gwei') + ' gwei' : undefined,
+      maxPriorityFeePerGas: txOptions.maxPriorityFeePerGas ? ethers.utils.formatUnits(txOptions.maxPriorityFeePerGas, 'gwei') + ' gwei' : undefined
+    });
+    
+    // Create transaction with fee + donation and gas settings
     const tx = await contract.createPost(
       content,
       title,
@@ -101,7 +139,7 @@ export const createBlockchainPost = async (postData, options = {}) => {
       visibility,
       ipfsCid,
       metadata,
-      { value: totalValue }
+      txOptions
     );
     
     console.log('Blockchain post transaction sent:', tx.hash);

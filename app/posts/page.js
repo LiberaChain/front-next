@@ -29,6 +29,8 @@ export default function PostsPage() {
   const [commenting, setCommenting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [refreshInterval, setRefreshInterval] = useState(null);
+  const [lastRefresh, setLastRefresh] = useState(Date.now());
   
   // For post creation
   const [postContent, setPostContent] = useState('');
@@ -102,6 +104,15 @@ export default function PostsPage() {
         
         // Load posts
         loadPosts();
+        
+        // Set up background refresh interval
+        const interval = setInterval(() => {
+          console.log('Auto-refreshing posts in background...');
+          setLastRefresh(Date.now());
+          loadPosts(true); // Pass true to indicate this is a background refresh
+        }, 15000); // 15 seconds
+        
+        setRefreshInterval(interval);
       } catch (err) {
         console.error("Error checking authentication:", err);
         router.push('/login');
@@ -111,6 +122,13 @@ export default function PostsPage() {
     };
     
     checkAuth();
+    
+    // Clean up interval on unmount
+    return () => {
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
+    };
   }, [router]);
 
   // Check blockchain posting ability
@@ -138,9 +156,14 @@ export default function PostsPage() {
   }, [profileData]);
   
   // Load posts based on current display mode
-  const loadPosts = async () => {
+  const loadPosts = async (isBackgroundRefresh = false) => {
     try {
-      setLoading(true);
+      // Only show loading indicator for initial/manual refreshes
+      if (!isBackgroundRefresh) {
+        setLoading(true);
+        // Clear existing posts while loading to avoid showing "No posts" message temporarily
+        setPosts([]);
+      }
       
       let loadedPosts = [];
       
@@ -152,21 +175,26 @@ export default function PostsPage() {
         loadedPosts = await getPublicPosts();
       }
       
-      setPosts(loadedPosts);
-      
       // Load comments for all posts
       const newCommentsMap = {};
       loadedPosts.forEach(post => {
-        const postComments = getPostComments(post.cid);
-        newCommentsMap[post.cid] = postComments;
+        const postComments = getPostComments(post.cid || post.postId);
+        newCommentsMap[post.cid || post.postId] = postComments;
       });
       setCommentsMap(newCommentsMap);
       
+      // Update posts state with the loaded data
+      setPosts(loadedPosts);
     } catch (error) {
       console.error('Error loading posts:', error);
-      setError('Failed to load posts. Please try again.');
+      if (!isBackgroundRefresh) {
+        setError('Failed to load posts. Please try again.');
+      }
     } finally {
-      setLoading(false);
+      // Only set loading to false after everything is done
+      if (!isBackgroundRefresh) {
+        setLoading(false);
+      }
     }
   };
 
@@ -892,31 +920,55 @@ export default function PostsPage() {
               <div className="flex justify-between items-center">
                 <h2 className="text-lg font-medium text-white">Posts</h2>
                 
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => handleDisplayModeChange('all')}
-                    className={`px-3 py-1 text-xs rounded-md ${
-                      displayMode === 'all'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    }`}
-                  >
-                    All Posts
-                  </button>
-                  <button
-                    onClick={() => handleDisplayModeChange('mine')}
-                    className={`px-3 py-1 text-xs rounded-md ${
-                      displayMode === 'mine'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    }`}
-                  >
-                    My Posts
-                  </button>
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs text-gray-400">
+                    Last updated: {new Date(lastRefresh).toLocaleTimeString()}
+                  </span>
+                  
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => handleDisplayModeChange('all')}
+                      className={`px-3 py-1 text-xs rounded-md ${
+                        displayMode === 'all'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      }`}
+                    >
+                      All Posts
+                    </button>
+                    <button
+                      onClick={() => handleDisplayModeChange('mine')}
+                      className={`px-3 py-1 text-xs rounded-md ${
+                        displayMode === 'mine'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      }`}
+                    >
+                      My Posts
+                    </button>
+                    
+                    <button
+                      onClick={() => loadPosts()}
+                      disabled={loading}
+                      className="px-3 py-1 text-xs rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                      title="Refresh posts"
+                    >
+                      {loading ? (
+                        <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {loading ? (
+              {loading && posts.length === 0 ? (
                 <div className="mt-6 flex justify-center">
                   <svg className="animate-spin h-8 w-8 text-emerald-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -1118,10 +1170,12 @@ export default function PostsPage() {
                     ))
                   ) : (
                     <div className="text-center py-8">
+                      <svg className="animate-spin h-10 w-10 text-emerald-500 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
                       <p className="text-gray-400">
-                        {displayMode === 'mine'
-                          ? "You haven't created any posts yet."
-                          : "No posts available. Be the first to create one!"}
+                        Loading posts...
                       </p>
                     </div>
                   )}

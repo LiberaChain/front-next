@@ -12,35 +12,50 @@ const s3 = new AWS.S3({
 // Bucket name where you store files
 const bucketName = process.env.NEXT_PUBLIC_S3_BUCKET_NAME;
 
-// CREATE - Upload a file to IPFS-compatible S3
+// CREATE - Upload a file to IPFS-compatible S3 via proxy API
 export async function uploadFile(fileName, fileContent) {
-    const params = {
-        Bucket: bucketName,
-        Key: fileName,  // The name of the file you're uploading
-        Body: fileContent,  // The file content
-    };
-
     try {
-        const data = await s3.upload(params).promise();
-        console.log('File uploaded successfully:', data.Location);
-        return data.Location; // Return the URL of the uploaded file
+        // Use our API route instead of direct S3 access
+        const response = await fetch('/api/storage', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                fileName,
+                content: fileContent
+            }),
+        });
+
+        const data = await response.json();
+        
+        if (!data.success) {
+            throw new Error(data.error || 'Failed to upload file');
+        }
+        
+        console.log('File uploaded successfully:', data.location);
+        return data.key; // Return the key/filename
     } catch (error) {
         console.error('Error uploading file:', error);
         return null;
     }
 }
 
-// READ - Retrieve a file from IPFS-compatible S3
+// READ - Retrieve a file from IPFS-compatible S3 via proxy API
 export async function getFile(fileName) {
-    const params = {
-        Bucket: bucketName,
-        Key: fileName,
-    };
-
     try {
-        const data = await s3.getObject(params).promise();
+        // Use our API route instead of direct S3 access
+        const response = await fetch(`/api/storage?key=${encodeURIComponent(fileName)}`);
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `HTTP error: ${response.status}`);
+        }
+        
+        // If it's a JSON file, we'll get JSON directly
+        const data = await response.json();
         console.log('File retrieved successfully');
-        return data.Body.toString();
+        return JSON.stringify(data);
     } catch (error) {
         console.error('Error retrieving file:', error);
         return null;
@@ -49,20 +64,8 @@ export async function getFile(fileName) {
 
 // UPDATE - Update an existing file (uploading a new version)
 export async function updateFile(fileName, newContent) {
-    const params = {
-        Bucket: bucketName,
-        Key: fileName,
-        Body: newContent,
-    };
-
-    try {
-        const data = await s3.upload(params).promise();
-        console.log('File updated successfully:', data.Location);
-        return data.Location;
-    } catch (error) {
-        console.error('Error updating file:', error);
-        return null;
-    }
+    // For updates, we can just use the same upload function
+    return uploadFile(fileName, newContent);
 }
 
 // DELETE - Remove a file from IPFS-compatible S3
@@ -115,7 +118,8 @@ export const hasS3Credentials = () => {
     );
 };
 
-// Get S3 gateway URL
+// Get S3 gateway URL for listings
 export const getS3Gateway = () => {
-    return process.env.NEXT_PUBLIC_S3_ENDPOINT;
+    // Return the base URL for our local API proxy instead of the direct S3 endpoint
+    return '/api/storage';
 };
