@@ -82,6 +82,29 @@ export async function deleteFile(fileName) {
     }
 }
 
+// Check if a file exists in the S3 bucket
+export async function checkFileExists(fileName) {
+  const params = {
+    Bucket: bucketName,
+    Key: fileName,
+  };
+
+  try {
+    // We use headObject instead of getObject to minimize data transfer
+    // It only checks if the object exists and returns metadata
+    await s3.headObject(params).promise();
+    console.log(`File ${fileName} exists in bucket ${bucketName}`);
+    return true;
+  } catch (error) {
+    if (error.code === 'NotFound') {
+      console.log(`File ${fileName} does not exist in bucket ${bucketName}`);
+      return false;
+    }
+    console.error('Error checking if file exists:', error);
+    return false;
+  }
+}
+
 // Check if S3 credentials are available
 export const hasS3Credentials = () => {
     return !!(

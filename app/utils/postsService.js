@@ -1,5 +1,11 @@
-// Posts Service for IPFS-based social media functionality
+// Posts Service for IPFS-based social media functionality using S3 storage
 import axios from 'axios';
+import {
+  uploadFile, 
+  getFile, 
+  hasS3Credentials, 
+  getS3Gateway
+} from './ipfs-crud.js';
 
 // Reuse the IPFS configuration from ipfsService.js
 // We're using Infura's IPFS HTTP API, but you can use any IPFS provider or run your own node
@@ -19,7 +25,7 @@ const ipfsApiEndpoint = 'https://ipfs.infura.io:5001/api/v0';
  * @returns {boolean} Whether credentials are available
  */
 const hasIpfsCredentials = () => {
-  return !!(projectId && projectSecret);
+  return hasS3Credentials();
 };
 
 /**
@@ -232,21 +238,19 @@ export const uploadPostToIPFS = async (postData) => {
     // Convert post data to string
     const postDataString = JSON.stringify(postData);
     
-    // Create form data with the file contents
-    const formData = new FormData();
-    const blob = new Blob([postDataString], { type: 'application/json' });
-    formData.append('file', blob);
+    // Generate a unique filename for this post
+    const filename = `post-${Date.now()}.json`;
     
-    // Upload to IPFS via Infura API
-    const response = await axios.post(`${ipfsApiEndpoint}/add`, formData, {
-      headers: {
-        'Authorization': auth,
-        'Content-Type': 'multipart/form-data'
-      }
-    });
+    // Use S3 uploadFile function from ipfs-crud.js
+    const fileLocation = await uploadFile(filename, postDataString);
     
-    const cid = response.data.Hash;
-    console.log('Post uploaded to IPFS with CID:', cid);
+    if (!fileLocation) {
+      throw new Error('Post upload failed');
+    }
+    
+    // Use the filename as the identifier
+    const cid = filename; 
+    console.log('Post uploaded to IPFS with ID:', cid);
     return cid;
     
   } catch (error) {
@@ -264,27 +268,26 @@ export const uploadPostToIPFS = async (postData) => {
 
 /**
  * Retrieve a post from IPFS
- * @param {string} cid - IPFS Content ID (CID)
+ * @param {string} cid - IPFS Content ID (CID) or filename
  * @returns {Promise<Object|null>} Post data or null if not found
  */
 export const retrievePostFromIPFS = async (cid) => {
   try {
     // Check if this is a mock CID for localStorage storage
-    if (cid.startsWith('mock-post-cid-')) {
+    if (cid.startsWith('mock-post-cid-') || cid.startsWith('mock-demo-post-cid-')) {
       console.warn('Using fallback storage for post retrieval.');
       const postsMap = JSON.parse(localStorage.getItem('liberaChainIpfsPosts') || '{}');
       return postsMap[cid] || null;
     }
     
-    // Use public IPFS gateway to fetch the content
-    const gatewayUrl = `https://ipfs.io/ipfs/${cid}`;
-    const response = await axios.get(gatewayUrl);
+    // Use the getFile function from ipfs-crud.js
+    const fileContent = await getFile(cid);
     
-    if (response.status !== 200) {
-      throw new Error(`Failed to fetch IPFS post content: ${response.statusText}`);
+    if (!fileContent) {
+      throw new Error(`Failed to fetch IPFS post content`);
     }
     
-    return response.data;
+    return JSON.parse(fileContent);
   } catch (error) {
     console.error('Error retrieving post from IPFS:', error);
     

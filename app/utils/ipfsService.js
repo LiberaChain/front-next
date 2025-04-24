@@ -137,8 +137,11 @@ export const retrieveProfileFromIPFS = async (cid) => {
  */
 export const updateProfileInIPFS = async (cid, profileData) => {
   try {
+    console.log('Attempting to update profile in IPFS with CID/filename:', cid);
+    
     // Check if this is a mock CID for localStorage storage
     if (cid.startsWith('mock-cid-')) {
+      console.log('Using localStorage fallback for update');
       // Use fallback storage for update
       const profilesMap = JSON.parse(localStorage.getItem('liberaChainIpfsProfiles') || '{}');
       profilesMap[cid] = profileData;
@@ -148,17 +151,57 @@ export const updateProfileInIPFS = async (cid, profileData) => {
     
     // Convert profile data to string
     const profileDataString = JSON.stringify(profileData);
+    console.log('Profile data prepared for update:', { 
+      did: profileData.did,
+      username: profileData.username,
+      bucket: process.env.NEXT_PUBLIC_S3_BUCKET_NAME
+    });
+    
+    // First check if the file exists before updating
+    const fileExists = await checkFileExists(cid);
+    
+    // If file doesn't exist, create a new one instead
+    if (!fileExists) {
+      console.warn('File not found in S3 with key:', cid);
+      console.log('Creating new file instead of updating...');
+      // Generate a new unique filename
+      const newFilename = `profile-${Date.now()}.json`;
+      const fileLocation = await uploadFile(newFilename, profileDataString);
+      
+      if (!fileLocation) {
+        throw new Error('Upload failed');
+      }
+      
+      console.log('Created new profile instead of update. New location:', fileLocation);
+      return newFilename; // Return the new filename/key
+    }
     
     // Update the file with new content
+    console.log('Updating existing file in S3:', cid);
     const updatedLocation = await updateFile(cid, profileDataString);
     
     if (!updatedLocation) {
       throw new Error('Update failed');
     }
     
+    console.log('Profile updated successfully in S3:', updatedLocation);
     return cid; // Return the same filename/key
   } catch (error) {
     console.error('Error updating profile in IPFS:', error);
+    // Create a new file if update fails for any reason
+    try {
+      console.log('Attempting to create a new file after update failure');
+      const newFilename = `profile-${Date.now()}.json`;
+      const profileDataString = JSON.stringify(profileData);
+      const fileLocation = await uploadFile(newFilename, profileDataString);
+      
+      if (fileLocation) {
+        console.log('Successfully created new profile after update failure:', fileLocation);
+        return newFilename;
+      }
+    } catch (secondError) {
+      console.error('Failed to create new file after update failure:', secondError);
+    }
     return null;
   }
 };
