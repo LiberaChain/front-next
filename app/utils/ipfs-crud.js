@@ -13,7 +13,7 @@ const s3 = new AWS.S3({
 const bucketName = process.env.NEXT_PUBLIC_S3_BUCKET_NAME;
 
 // CREATE - Upload a file to IPFS-compatible S3
-async function uploadFile(fileName, fileContent) {
+export async function uploadFile(fileName, fileContent) {
     const params = {
         Bucket: bucketName,
         Key: fileName,  // The name of the file you're uploading
@@ -23,13 +23,15 @@ async function uploadFile(fileName, fileContent) {
     try {
         const data = await s3.upload(params).promise();
         console.log('File uploaded successfully:', data.Location);
+        return data.Location; // Return the URL of the uploaded file
     } catch (error) {
         console.error('Error uploading file:', error);
+        return null;
     }
 }
 
 // READ - Retrieve a file from IPFS-compatible S3
-async function getFile(fileName) {
+export async function getFile(fileName) {
     const params = {
         Bucket: bucketName,
         Key: fileName,
@@ -37,14 +39,16 @@ async function getFile(fileName) {
 
     try {
         const data = await s3.getObject(params).promise();
-        console.log('File retrieved successfully:', data.Body.toString());
+        console.log('File retrieved successfully');
+        return data.Body.toString();
     } catch (error) {
         console.error('Error retrieving file:', error);
+        return null;
     }
 }
 
 // UPDATE - Update an existing file (uploading a new version)
-async function updateFile(fileName, newContent) {
+export async function updateFile(fileName, newContent) {
     const params = {
         Bucket: bucketName,
         Key: fileName,
@@ -54,13 +58,15 @@ async function updateFile(fileName, newContent) {
     try {
         const data = await s3.upload(params).promise();
         console.log('File updated successfully:', data.Location);
+        return data.Location;
     } catch (error) {
         console.error('Error updating file:', error);
+        return null;
     }
 }
 
 // DELETE - Remove a file from IPFS-compatible S3
-async function deleteFile(fileName) {
+export async function deleteFile(fileName) {
     const params = {
         Bucket: bucketName,
         Key: fileName,
@@ -69,7 +75,24 @@ async function deleteFile(fileName) {
     try {
         await s3.deleteObject(params).promise();
         console.log('File deleted successfully');
+        return true;
     } catch (error) {
         console.error('Error deleting file:', error);
+        return false;
     }
 }
+
+// Check if S3 credentials are available
+export const hasS3Credentials = () => {
+    return !!(
+        process.env.NEXT_PUBLIC_S3_ENDPOINT && 
+        process.env.NEXT_PUBLIC_S3_ACCESS_KEY_ID && 
+        process.env.NEXT_PUBLIC_S3_SECRET_ACCESS_KEY &&
+        process.env.NEXT_PUBLIC_S3_BUCKET_NAME
+    );
+};
+
+// Get S3 gateway URL
+export const getS3Gateway = () => {
+    return process.env.NEXT_PUBLIC_S3_ENDPOINT;
+};

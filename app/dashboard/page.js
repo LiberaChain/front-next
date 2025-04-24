@@ -976,6 +976,14 @@ export default function Dashboard() {
                       <div>
                         <h3 className="text-md font-medium text-emerald-400">{searchResult.displayName}</h3>
                         <p className="text-xs text-gray-400 break-all">{searchResult.did}</p>
+                        {searchResult.ipfsProfile?.username && (
+                          <p className="text-xs text-blue-300 mt-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="inline-block h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            IPFS verified username
+                          </p>
+                        )}
                       </div>
                       <button
                         className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"

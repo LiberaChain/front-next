@@ -1,27 +1,18 @@
-// IPFS Service for user profile storage using web-compatible APIs
-import axios from 'axios'; // We'll use axios instead of ipfs-http-client
-
-// Configure IPFS client
-// We're using Infura's IPFS HTTP API, but you can use any IPFS provider or run your own node
-const projectId = process.env.NEXT_PUBLIC_IPFS_PROJECT_ID;
-const projectSecret = process.env.NEXT_PUBLIC_IPFS_API_SECRET;
-
-// Create authorization header
-const auth = projectId && projectSecret 
-  ? 'Basic ' + Buffer.from(projectId + ':' + projectSecret).toString('base64')
-  : '';
-
-// IPFS API endpoint
-const ipfsApiEndpoint = 'https://ipfs.infura.io:5001/api/v0';
-// IPFS Gateway
-const ipfsGateway = 'https://ipfs.io';
+// IPFS Service for user profile storage using S3-compatible implementation from Filebase
+import {
+  uploadFile,
+  getFile,
+  updateFile,
+  hasS3Credentials,
+  getS3Gateway
+} from './ipfs-crud.js';
 
 /**
  * Check if IPFS credentials are available
  * @returns {boolean} Whether credentials are available
  */
 export const hasIpfsCredentials = () => {
-  return !!(projectId && projectSecret);
+  return hasS3Credentials();
 };
 
 /**
@@ -33,9 +24,9 @@ export const getIpfsStatus = () => {
   return {
     connected: isConnected,
     mode: isConnected ? 'distributed' : 'local_storage',
-    gateway: isConnected ? ipfsGateway : 'mock (localStorage)',
-    apiEndpoint: isConnected ? ipfsApiEndpoint : 'none',
-    nodeType: isConnected ? 'Infura' : 'Local Mock',
+    gateway: isConnected ? getS3Gateway() : 'mock (localStorage)',
+    apiEndpoint: isConnected ? 'S3-compatible API' : 'none',
+    nodeType: isConnected ? 'Filebase S3' : 'Local Mock',
     health: isConnected ? 'healthy' : 'simulated',
     storageCount: isConnected ? null : getLocalStorageItemCount()
   };
@@ -75,21 +66,19 @@ export const uploadProfileToIPFS = async (profileData) => {
     // Convert profile data to string
     const profileDataString = JSON.stringify(profileData);
     
-    // Create form data with the file contents
-    const formData = new FormData();
-    const blob = new Blob([profileDataString], { type: 'application/json' });
-    formData.append('file', blob);
+    // Generate a unique filename for this profile
+    const filename = `profile-${Date.now()}.json`;
     
-    // Upload to IPFS via Infura API
-    const response = await axios.post(`${ipfsApiEndpoint}/add`, formData, {
-      headers: {
-        'Authorization': auth,
-        'Content-Type': 'multipart/form-data'
-      }
-    });
+    // Use S3 uploadFile function from ipfs-crud.js
+    const fileLocation = await uploadFile(filename, profileDataString);
     
-    const cid = response.data.Hash;
-    console.log('Profile uploaded to IPFS with CID:', cid);
+    if (!fileLocation) {
+      throw new Error('Upload failed');
+    }
+    
+    // Extract CID or filename from the location URL to use as identifier
+    const cid = filename; // Using filename as the CID identifier
+    console.log('Profile uploaded to IPFS with ID:', cid);
     return cid;
     
   } catch (error) {
@@ -107,7 +96,7 @@ export const uploadProfileToIPFS = async (profileData) => {
 
 /**
  * Retrieve user profile data from IPFS
- * @param {string} cid - IPFS Content ID (CID)
+ * @param {string} cid - IPFS Content ID (CID) or filename
  * @returns {Promise<Object|null>} User profile data or null if not found
  */
 export const retrieveProfileFromIPFS = async (cid) => {
@@ -119,15 +108,14 @@ export const retrieveProfileFromIPFS = async (cid) => {
       return profilesMap[cid] || null;
     }
     
-    // Use public IPFS gateway to fetch the content
-    const gatewayUrl = `https://ipfs.io/ipfs/${cid}`;
-    const response = await axios.get(gatewayUrl);
+    // Use the getFile function from ipfs-crud.js
+    const fileContent = await getFile(cid);
     
-    if (response.status !== 200) {
-      throw new Error(`Failed to fetch IPFS content: ${response.statusText}`);
+    if (!fileContent) {
+      throw new Error(`Failed to fetch IPFS content`);
     }
     
-    return response.data;
+    return JSON.parse(fileContent);
   } catch (error) {
     console.error('Error retrieving profile from IPFS:', error);
     
@@ -142,11 +130,35 @@ export const retrieveProfileFromIPFS = async (cid) => {
 };
 
 /**
- * Update a user profile in IPFS (creates a new CID)
+ * Update a user profile in IPFS
+ * @param {string} cid - Original IPFS Content ID (CID) or filename
  * @param {Object} profileData - Updated user profile data
  * @returns {Promise<string|null>} New IPFS CID
  */
-export const updateProfileInIPFS = async (profileData) => {
-  // IPFS is immutable, so updating is actually creating a new entry
-  return await uploadProfileToIPFS(profileData);
+export const updateProfileInIPFS = async (cid, profileData) => {
+  try {
+    // Check if this is a mock CID for localStorage storage
+    if (cid.startsWith('mock-cid-')) {
+      // Use fallback storage for update
+      const profilesMap = JSON.parse(localStorage.getItem('liberaChainIpfsProfiles') || '{}');
+      profilesMap[cid] = profileData;
+      localStorage.setItem('liberaChainIpfsProfiles', JSON.stringify(profilesMap));
+      return cid; // Return the same mock CID
+    }
+    
+    // Convert profile data to string
+    const profileDataString = JSON.stringify(profileData);
+    
+    // Update the file with new content
+    const updatedLocation = await updateFile(cid, profileDataString);
+    
+    if (!updatedLocation) {
+      throw new Error('Update failed');
+    }
+    
+    return cid; // Return the same filename/key
+  } catch (error) {
+    console.error('Error updating profile in IPFS:', error);
+    return null;
+  }
 };

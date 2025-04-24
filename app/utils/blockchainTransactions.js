@@ -300,6 +300,9 @@ export const searchUserByDid = async (did) => {
     // In a production app, this would query a registry contract or API
     console.log('Searching for user with DID:', did);
     
+    // First try to get the user's profile from IPFS
+    const ipfsProfile = await getUserProfileFromIPFS(did);
+    
     // For demo purposes, simulate finding a user with a delay
     // In a real implementation, this would check against a smart contract or API
     return new Promise((resolve) => {
@@ -312,11 +315,15 @@ export const searchUserByDid = async (did) => {
           // In a real app, this would come from the registry
           const mockPublicKey = `0x04${address.substring(2)}00`.padEnd(132, '0');
           
+          // Use the username from IPFS if available, otherwise use a generic name
+          const displayName = ipfsProfile?.username || `User ${address.substring(2, 6)}`;
+          
           resolve({
             did: did,
             publicKey: mockPublicKey,
             found: true,
-            displayName: `User ${address.substring(2, 6)}`
+            displayName: displayName,
+            ipfsProfile: ipfsProfile
           });
         } else {
           resolve(null);
@@ -410,6 +417,19 @@ export const updateUserProfileInIPFS = async (did, updatedProfileData) => {
     if (!did) throw new Error('DID is required');
     if (!updatedProfileData) throw new Error('Updated profile data is required');
     
+    // Get CID reference for this DID
+    const didToCidMap = JSON.parse(localStorage.getItem('liberaChainDidToCidMap') || '{}');
+    const currentCid = didToCidMap[did];
+    
+    // If no profile exists yet, create a new one
+    if (!currentCid) {
+      console.log(`No existing profile found for DID: ${did}. Creating a new profile.`);
+      return await storeUserProfileInIPFS(did, {
+        ...updatedProfileData,
+        createdAt: Date.now(),
+      });
+    }
+    
     // Get existing profile data
     const existingProfile = await getUserProfileFromIPFS(did);
     
@@ -421,19 +441,18 @@ export const updateUserProfileInIPFS = async (did, updatedProfileData) => {
       updatedAt: Date.now()
     };
     
-    // Upload updated profile to IPFS (creates new CID)
-    const newCid = await updateProfileInIPFS(mergedProfile);
+    // Update profile in IPFS using the existing CID
+    const newCid = await updateProfileInIPFS(currentCid, mergedProfile);
     
     if (!newCid) throw new Error('Failed to update profile in IPFS');
     
-    // Update CID reference for this DID
-    const didToCidMap = JSON.parse(localStorage.getItem('liberaChainDidToCidMap') || '{}');
-    didToCidMap[did] = newCid;
-    localStorage.setItem('liberaChainDidToCidMap', JSON.stringify(didToCidMap));
+    // Update CID reference if the CID changed
+    if (newCid !== currentCid) {
+      didToCidMap[did] = newCid;
+      localStorage.setItem('liberaChainDidToCidMap', JSON.stringify(didToCidMap));
+    }
     
-    // In a production app, we would also update this mapping on-chain
-    
-    console.log(`Profile for ${did} updated in IPFS with new CID: ${newCid}`);
+    console.log(`Profile for ${did} updated in IPFS with CID: ${newCid}`);
     
     return {
       success: true,
