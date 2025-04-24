@@ -1,20 +1,73 @@
+/* Chat page styling to match the app theme */
 
-
-  .animate-gradient {
-	background: linear-gradient(-45deg, #2FD7A2, #23B8BD, #22DD70);
-	background-size: 400% 400%;
-	animation: gradient 15s ease infinite;
-	height: 100vh;
+/* Gradient animation for background */
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: gradient 15s ease infinite;
 }
 
 @keyframes gradient {
-	0% {
-		background-position: 0% 50%;
-	}
-	50% {
-		background-position: 100% 50%;
-	}
-	100% {
-		background-position: 0% 50%;
-	}
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Custom transitions for mobile chat toggle */
+@media (max-width: 768px) {
+  .w-0 {
+    transition: width 0.3s ease;
+  }
+  .w-full {
+    transition: width 0.3s ease;
+  }
+}
+
+/* Message bubble animations */
+.flex-1 p-4 > div {
+  animation: message-fade-in 0.3s ease;
+}
+
+@keyframes message-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* QR code modal backdrop blur effect */
+.backdrop-blur {
+  backdrop-filter: blur(8px);
+}
+
+/* Custom scrollbar for the chat area */
+.overflow-y-auto::-webkit-scrollbar {
+  width: 6px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-track {
+  background: rgba(55, 65, 81, 0.5); /* gray-700 with opacity */
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background: rgba(16, 185, 129, 0.7); /* emerald-600 with opacity */
+  border-radius: 3px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+  background: rgba(16, 185, 129, 0.9); /* emerald-600 with higher opacity on hover */
+}
+
+/* Button hover effect */
+button.hover\:bg-emerald-700:hover {
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
 }

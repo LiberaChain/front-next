@@ -1,0 +1,9 @@
+{
+  "UserPublicKeys": "0x4Be60DA8A6C0557df4e35ff2346Bc1F147b321A3",
+  "UserRegistry": "0xA00e93c2167A08cD266f7a732b0C1D3A8c0920d9",
+  "BlockchainPosts": "0xCa57bbb28b4643f4e23A41FfBBF4e1C993c2D23a",
+  "DeployerInfo": {
+    "address": "0x385056a448F3B5D3559770e1857ce9bFec38B5Ed",
+    "did": "did:ethr:0x385056a448F3B5D3559770e1857ce9bFec38B5Ed"
+  }
+}
