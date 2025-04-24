@@ -38,6 +38,17 @@ export default function PostsPage() {
   const [blockchainFee, setBlockchainFee] = useState('0.001');
   const [canUseBlockchain, setCanUseBlockchain] = useState(false);
   const [showFeeWarning, setShowFeeWarning] = useState(false);
+  const [donationAmount, setDonationAmount] = useState('0'); // Amount to donate beyond required fee
+  const [selectedDonationPreset, setSelectedDonationPreset] = useState('');
+  
+  // Donation presets
+  const donationPresets = [
+    { label: "No donation", value: "0" },
+    { label: "Small (0.005 ETH)", value: "0.005" },
+    { label: "Medium (0.01 ETH)", value: "0.01" },
+    { label: "Large (0.05 ETH)", value: "0.05" },
+    { label: "Custom", value: "custom" }
+  ];
   
   // For import
   const [importUrl, setImportUrl] = useState('');
@@ -191,8 +202,14 @@ export default function PostsPage() {
       
       // Choose storage method based on user selection
       if (postStorage === 'blockchain') {
-        // Post directly to blockchain
-        const blockchainResult = await createBlockchainPost(postData);
+        // Add donation amount if applicable
+        const options = {};
+        if (donationAmount && donationAmount !== '0') {
+          options.donationAmount = donationAmount;
+        }
+        
+        // Post directly to blockchain with optional donation
+        const blockchainResult = await createBlockchainPost(postData, options);
         
         if (!blockchainResult.success) {
           throw new Error('Failed to post to blockchain: ' + (blockchainResult.error || 'Unknown error'));
@@ -202,8 +219,15 @@ export default function PostsPage() {
         setPostTitle('');
         setPostContent('');
         setPostVisibility('public');
-        setSuccess('Post published successfully to blockchain! Transaction: ' + 
-          blockchainResult.transactionHash.substring(0, 10) + '...');
+        setDonationAmount('0');
+        setSelectedDonationPreset('');
+        
+        // Include donation information in success message if applicable
+        let successMsg = `Post published successfully to blockchain! Transaction: ${blockchainResult.transactionHash.substring(0, 10)}...`;
+        if (blockchainResult.donation && blockchainResult.donation !== '0') {
+          successMsg += ` Thank you for your donation of ${blockchainResult.donation} ETH!`;
+        }
+        setSuccess(successMsg);
       } else {
         // Use traditional IPFS posting
         const cid = await uploadPostToIPFS(postData);
@@ -670,6 +694,47 @@ export default function PostsPage() {
                       </div>
                     </div>
                   )}
+
+                  {postStorage === 'blockchain' && canUseBlockchain && (
+                    <div>
+                      <label htmlFor="donation-amount" className="block text-sm font-medium text-gray-300">
+                        Donation Amount (optional)
+                      </label>
+                      <div className="mt-1">
+                        <select
+                          id="donation-preset"
+                          name="donation-preset"
+                          value={selectedDonationPreset}
+                          onChange={(e) => {
+                            const selectedValue = e.target.value;
+                            setSelectedDonationPreset(selectedValue);
+                            setDonationAmount(selectedValue === 'custom' ? '' : selectedValue);
+                          }}
+                          className="bg-gray-700 text-white block w-full appearance-none rounded-md border border-gray-600 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-emerald-500 sm:text-sm"
+                        >
+                          {donationPresets.map((preset) => (
+                            <option key={preset.value} value={preset.value}>
+                              {preset.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {selectedDonationPreset === 'custom' && (
+                        <div className="mt-2">
+                          <input
+                            id="donation-amount"
+                            name="donation-amount"
+                            type="number"
+                            step="0.001"
+                            value={donationAmount}
+                            onChange={(e) => setDonationAmount(e.target.value)}
+                            placeholder="Enter custom donation amount in ETH"
+                            className="bg-gray-700 text-white block w-full appearance-none rounded-md border border-gray-600 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-emerald-500 sm:text-sm"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
                   
                   <div>
                     <button
@@ -867,7 +932,8 @@ export default function PostsPage() {
                           <div>
                             <h3 className="text-md font-medium text-white">{post.title}</h3>
                             <p className="text-xs text-gray-400">
-                              By {post.authorName} • {formatDate(post.timestamp)}
+                              By {post.authorName} <span className="text-gray-500">({post.authorDid.substring(9, 15)}...)</span>
+                              <br />{formatDate(post.timestamp)}
                             </p>
                           </div>
                           <div className="flex items-center space-x-2">
@@ -898,6 +964,15 @@ export default function PostsPage() {
                             {post.source === 'ipfs' && (
                               <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-emerald-900/30 text-emerald-400">
                                 IPFS
+                              </span>
+                            )}
+
+                            {post.donation && parseFloat(post.donation) > 0 && (
+                              <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-yellow-900/30 text-yellow-400">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                Donated {post.donation} ETH
                               </span>
                             )}
                           </div>

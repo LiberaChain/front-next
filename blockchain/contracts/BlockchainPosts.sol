@@ -11,6 +11,7 @@ contract BlockchainPosts {
     // Fee settings
     uint256 public postFee = 0.001 ether; // Small fee to discourage spam
     address public feeCollector;
+    address public contractCreator; // Store the contract creator's address
 
     // Post structure
     struct Post {
@@ -23,6 +24,7 @@ contract BlockchainPosts {
         string visibility;     // "public" or "friends-only"
         string ipfsCid;        // Optional reference to IPFS content (if any)
         string metadata;       // JSON string for additional metadata (can contain references to external URLs, etc.)
+        uint256 donation;      // Donation amount in wei (beyond required fee)
     }
 
     // Store posts by their unique IDs
@@ -35,19 +37,21 @@ contract BlockchainPosts {
     bytes32[] public allPostIds;
 
     // Events
-    event PostCreated(bytes32 indexed postId, string authorDid, uint256 timestamp, string visibility);
+    event PostCreated(bytes32 indexed postId, string authorDid, uint256 timestamp, string visibility, uint256 donation);
     event PostFeeChanged(uint256 newFee);
     event FeeCollectorChanged(address newCollector);
+    event DonationReceived(bytes32 indexed postId, uint256 donationAmount);
 
     /**
-     * @dev Constructor sets the fee collector address
+     * @dev Constructor sets the fee collector address and contract creator
      */
     constructor() {
         feeCollector = msg.sender;
+        contractCreator = msg.sender;
     }
 
     /**
-     * @dev Create a new post on the blockchain
+     * @dev Create a new post on the blockchain with optional donation
      * @param _content The content of the post
      * @param _title The title of the post
      * @param _authorDid Author's DID
@@ -76,6 +80,12 @@ contract BlockchainPosts {
         // Generate a unique post ID based on content and author
         postId = keccak256(abi.encodePacked(_authorDid, _content, block.timestamp));
         
+        // Calculate donation amount (anything above required fee)
+        uint256 donationAmount = 0;
+        if (msg.value > postFee) {
+            donationAmount = msg.value - postFee;
+        }
+        
         // Create the post
         Post memory newPost = Post({
             content: _content,
@@ -86,7 +96,8 @@ contract BlockchainPosts {
             timestamp: block.timestamp,
             visibility: _visibility,
             ipfsCid: _ipfsCid,
-            metadata: _metadata
+            metadata: _metadata,
+            donation: donationAmount
         });
         
         // Store the post
@@ -98,13 +109,21 @@ contract BlockchainPosts {
         // Add to the global posts collection
         allPostIds.push(postId);
         
-        // Forward fee to collector
+        // Forward fee to collector and donation to contract creator
         if (msg.value > 0) {
-            payable(feeCollector).transfer(msg.value);
+            if (donationAmount > 0) {
+                // Split payment: fee to collector, donation to contract creator
+                payable(feeCollector).transfer(postFee);
+                payable(contractCreator).transfer(donationAmount);
+                emit DonationReceived(postId, donationAmount);
+            } else {
+                // Just the fee, send to collector
+                payable(feeCollector).transfer(msg.value);
+            }
         }
         
         // Emit event
-        emit PostCreated(postId, _authorDid, block.timestamp, _visibility);
+        emit PostCreated(postId, _authorDid, block.timestamp, _visibility, donationAmount);
         
         return postId;
     }
@@ -121,6 +140,7 @@ contract BlockchainPosts {
      * @return visibility Post visibility setting
      * @return ipfsCid IPFS CID reference (if any)
      * @return metadata Additional post metadata
+     * @return donation Amount donated with this post
      */
     function getPost(bytes32 _postId) public view returns (
         string memory content,
@@ -131,7 +151,8 @@ contract BlockchainPosts {
         uint256 timestamp,
         string memory visibility,
         string memory ipfsCid,
-        string memory metadata
+        string memory metadata,
+        uint256 donation
     ) {
         Post memory post = posts[_postId];
         require(bytes(post.authorDid).length > 0, "Post does not exist");
@@ -145,7 +166,8 @@ contract BlockchainPosts {
             post.timestamp,
             post.visibility,
             post.ipfsCid,
-            post.metadata
+            post.metadata,
+            post.donation
         );
     }
 
@@ -220,5 +242,13 @@ contract BlockchainPosts {
      */
     function getPostFee() public view returns (uint256) {
         return postFee;
+    }
+    
+    /**
+     * @dev Get the contract creator address
+     * @return The address of the contract creator
+     */
+    function getContractCreator() public view returns (address) {
+        return contractCreator;
     }
 }

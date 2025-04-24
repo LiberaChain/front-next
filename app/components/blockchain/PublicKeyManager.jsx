@@ -20,6 +20,7 @@ export default function PublicKeyManager({ userId }) {
   const [attemptedLoad, setAttemptedLoad] = useState(false);
   const [networkInfo, setNetworkInfo] = useState(null);
   const [networkError, setNetworkError] = useState(null);
+  const [isCollapsed, setIsCollapsed] = useState(true); // New state for collapse functionality
 
   // Check wallet network on component mount
   useEffect(() => {
@@ -305,142 +306,169 @@ export default function PublicKeyManager({ userId }) {
     }
   }, [isConnected, userId, attemptedLoad, networkError]);
 
+  // Toggle collapse functionality
+  const toggleCollapse = () => {
+    setIsCollapsed(!isCollapsed);
+  };
+
   return (
     <div className="my-6 p-4 border rounded-md bg-white dark:bg-gray-800">
-      <h3 className="text-lg font-semibold mb-4">Blockchain Public Key Manager</h3>
+      {/* Collapsible header */}
+      <button 
+        onClick={toggleCollapse}
+        className="w-full flex justify-between items-center text-lg font-semibold mb-1"
+      >
+        <h3>Blockchain Public Key Manager</h3>
+        <span className="text-gray-500">
+          {isCollapsed ? (
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+            </svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" />
+            </svg>
+          )}
+        </span>
+      </button>
       
-      {networkInfo && networkInfo.success && (
-        <div className="mb-4 text-sm">
-          <div className="flex items-center">
-            <span className="mr-2 font-medium">Network:</span> 
-            <span className={networkInfo.rightNetwork ? "text-green-500" : "text-yellow-500"}>
-              {networkInfo.networkName || 'Unknown'} (Chain ID: {networkInfo.chainId})
-            </span>
+      {/* Content - Only shown when not collapsed */}
+      {!isCollapsed && (
+        <div className="mt-3">
+          {networkInfo && networkInfo.success && (
+            <div className="mb-4 text-sm">
+              <div className="flex items-center">
+                <span className="mr-2 font-medium">Network:</span> 
+                <span className={networkInfo.rightNetwork ? "text-green-500" : "text-yellow-500"}>
+                  {networkInfo.networkName || 'Unknown'} (Chain ID: {networkInfo.chainId})
+                </span>
+              </div>
+            </div>
+          )}
+          
+          {networkError && (
+            <div className="mb-4 p-2 bg-yellow-100 border border-yellow-400 text-yellow-800 rounded">
+              <p>{networkError}</p>
+              <p className="text-sm mt-1">To use the local Hardhat network in MetaMask:</p>
+              <ol className="text-sm list-decimal pl-5 mt-1">
+                <li>Open MetaMask</li>
+                <li>Click on the network dropdown at the top</li>
+                <li>Select "Add Network"</li>
+                <li>Add network manually with: Name: "Hardhat Local", RPC URL: "http://127.0.0.1:8545", Chain ID: "31337"</li>
+              </ol>
+            </div>
+          )}
+          
+          {!isConnected ? (
+            <div className="mb-4">
+              <button 
+                onClick={connectWallet}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded"
+                disabled={loading}
+              >
+                {loading ? 'Connecting...' : 'Connect Wallet'}
+              </button>
+              <p className="mt-2 text-sm text-gray-500">Connect your Ethereum wallet to publish your public key</p>
+            </div>
+          ) : (
+            <div className="mb-4">
+              <span className="text-sm text-gray-600 dark:text-gray-300">Connected Wallet: </span>
+              <code className="text-xs break-all bg-gray-100 dark:bg-gray-700 p-1 rounded">
+                {walletAddress}
+              </code>
+            </div>
+          )}
+          
+          {error && (
+            <div className="mb-4 p-2 bg-red-100 border border-red-400 text-red-700 rounded">
+              {error}
+            </div>
+          )}
+          
+          {success && (
+            <div className="mb-4 p-2 bg-green-100 border border-green-400 text-green-700 rounded">
+              {success}
+            </div>
+          )}
+          
+          {loading && !error ? (
+            <div className="mb-4">Loading public key data...</div>
+          ) : publicKey ? (
+            <div className="mb-4">
+              <h4 className="font-medium">Your Current Public Key:</h4>
+              <pre className="mt-2 p-2 bg-gray-100 dark:bg-gray-700 rounded overflow-x-auto max-w-full">
+                {publicKey}
+              </pre>
+              <p className="mt-1 text-sm text-gray-500">{`Stored with ID: ${userId}`}</p>
+            </div>
+          ) : (
+            <div className="mb-4 text-yellow-600">
+              {isConnected ? 
+                `No public key found for your profile (${userId.substring(0, 10)}...) on the blockchain` : 
+                'Connect your wallet to view your public key'
+              }
+            </div>
+          )}
+          
+          <form onSubmit={handlePublishPublicKey}>
+            <div className="mb-4">
+              <label htmlFor="publicKey" className="block mb-1 font-medium">
+                New Public Key
+              </label>
+              <textarea
+                id="publicKey"
+                value={newPublicKey}
+                onChange={(e) => setNewPublicKey(e.target.value)}
+                className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
+                rows={4}
+                placeholder="Paste your public key here"
+              />
+              <div className="mt-1 text-xs text-gray-500 flex justify-between">
+                <span>This key will be stored on-chain with ID: {userId && userId.substring(0, 10)}...</span>
+                <span>{newPublicKey.length} characters</span>
+              </div>
+            </div>
+            
+            <button
+              type="submit"
+              disabled={loading || !isConnected || !!networkError}
+              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded disabled:bg-gray-400"
+            >
+              {loading ? 'Publishing...' : 'Publish Public Key to Blockchain'}
+            </button>
+          </form>
+          
+          {isConnected && (
+            <div className="mt-4">
+              <button
+                onClick={testDirectKeyStorage}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded mr-2"
+                disabled={loading || !isConnected || !!networkError}
+              >
+                Run Storage Test
+              </button>
+              <span className="text-xs text-gray-500">
+                This will test direct key storage and retrieval using your DID
+              </span>
+            </div>
+          )}
+          
+          {/* Debug section - remove in production */}
+          <div className="mt-8 border-t border-gray-300 pt-4 text-xs text-gray-500">
+            <details>
+              <summary className="cursor-pointer">Debug Information</summary>
+              <div className="mt-2 bg-gray-100 dark:bg-gray-700 p-2 rounded overflow-x-auto">
+                <p>User ID: {userId || 'Not set'}</p>
+                <p>Wallet Connected: {isConnected ? 'Yes' : 'No'}</p>
+                <p>Address: {walletAddress || 'Not connected'}</p>
+                <p>Attempted Load: {attemptedLoad ? 'Yes' : 'No'}</p>
+                <p>Network: {networkInfo ? JSON.stringify(networkInfo) : 'Unknown'}</p>
+                <p>Public Key Status: {publicKey ? `Found (${publicKey.length} chars)` : 'Not found'}</p>
+              </div>
+            </details>
           </div>
         </div>
       )}
-      
-      {networkError && (
-        <div className="mb-4 p-2 bg-yellow-100 border border-yellow-400 text-yellow-800 rounded">
-          <p>{networkError}</p>
-          <p className="text-sm mt-1">To use the local Hardhat network in MetaMask:</p>
-          <ol className="text-sm list-decimal pl-5 mt-1">
-            <li>Open MetaMask</li>
-            <li>Click on the network dropdown at the top</li>
-            <li>Select "Add Network"</li>
-            <li>Add network manually with: Name: "Hardhat Local", RPC URL: "http://127.0.0.1:8545", Chain ID: "31337"</li>
-          </ol>
-        </div>
-      )}
-      
-      {!isConnected ? (
-        <div className="mb-4">
-          <button 
-            onClick={connectWallet}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded"
-            disabled={loading}
-          >
-            {loading ? 'Connecting...' : 'Connect Wallet'}
-          </button>
-          <p className="mt-2 text-sm text-gray-500">Connect your Ethereum wallet to publish your public key</p>
-        </div>
-      ) : (
-        <div className="mb-4">
-          <span className="text-sm text-gray-600 dark:text-gray-300">Connected Wallet: </span>
-          <code className="text-xs break-all bg-gray-100 dark:bg-gray-700 p-1 rounded">
-            {walletAddress}
-          </code>
-        </div>
-      )}
-      
-      {error && (
-        <div className="mb-4 p-2 bg-red-100 border border-red-400 text-red-700 rounded">
-          {error}
-        </div>
-      )}
-      
-      {success && (
-        <div className="mb-4 p-2 bg-green-100 border border-green-400 text-green-700 rounded">
-          {success}
-        </div>
-      )}
-      
-      {loading && !error ? (
-        <div className="mb-4">Loading public key data...</div>
-      ) : publicKey ? (
-        <div className="mb-4">
-          <h4 className="font-medium">Your Current Public Key:</h4>
-          <pre className="mt-2 p-2 bg-gray-100 dark:bg-gray-700 rounded overflow-x-auto max-w-full">
-            {publicKey}
-          </pre>
-          <p className="mt-1 text-sm text-gray-500">{`Stored with ID: ${userId}`}</p>
-        </div>
-      ) : (
-        <div className="mb-4 text-yellow-600">
-          {isConnected ? 
-            `No public key found for your profile (${userId.substring(0, 10)}...) on the blockchain` : 
-            'Connect your wallet to view your public key'
-          }
-        </div>
-      )}
-      
-      <form onSubmit={handlePublishPublicKey}>
-        <div className="mb-4">
-          <label htmlFor="publicKey" className="block mb-1 font-medium">
-            New Public Key
-          </label>
-          <textarea
-            id="publicKey"
-            value={newPublicKey}
-            onChange={(e) => setNewPublicKey(e.target.value)}
-            className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
-            rows={4}
-            placeholder="Paste your public key here"
-          />
-          <div className="mt-1 text-xs text-gray-500 flex justify-between">
-            <span>This key will be stored on-chain with ID: {userId && userId.substring(0, 10)}...</span>
-            <span>{newPublicKey.length} characters</span>
-          </div>
-        </div>
-        
-        <button
-          type="submit"
-          disabled={loading || !isConnected || !!networkError}
-          className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded disabled:bg-gray-400"
-        >
-          {loading ? 'Publishing...' : 'Publish Public Key to Blockchain'}
-        </button>
-      </form>
-      
-      {isConnected && (
-        <div className="mt-4">
-          <button
-            onClick={testDirectKeyStorage}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded mr-2"
-            disabled={loading || !isConnected || !!networkError}
-          >
-            Run Storage Test
-          </button>
-          <span className="text-xs text-gray-500">
-            This will test direct key storage and retrieval using your DID
-          </span>
-        </div>
-      )}
-      
-      {/* Debug section - remove in production */}
-      <div className="mt-8 border-t border-gray-300 pt-4 text-xs text-gray-500">
-        <details>
-          <summary className="cursor-pointer">Debug Information</summary>
-          <div className="mt-2 bg-gray-100 dark:bg-gray-700 p-2 rounded overflow-x-auto">
-            <p>User ID: {userId || 'Not set'}</p>
-            <p>Wallet Connected: {isConnected ? 'Yes' : 'No'}</p>
-            <p>Address: {walletAddress || 'Not connected'}</p>
-            <p>Attempted Load: {attemptedLoad ? 'Yes' : 'No'}</p>
-            <p>Network: {networkInfo ? JSON.stringify(networkInfo) : 'Unknown'}</p>
-            <p>Public Key Status: {publicKey ? `Found (${publicKey.length} chars)` : 'Not found'}</p>
-          </div>
-        </details>
-      </div>
     </div>
   );
 }

@@ -1,9 +1,45 @@
 {
   "_format": "hh-sol-cache-2",
   "files": {
-    "/home/ziga/projects/liberachain/front-next/blockchain/contracts/UserPublicKeys.sol": {
-      "lastModificationDate": 1745489794981,
-      "contentHash": "8f3b7536c385893eeb424d7d841ee198",
+    "C:\\Users\\ziga\\Projects\\FRI-MAG\\megla\\front-next\\blockchain\\contracts\\BlockchainPosts.sol": {
+      "lastModificationDate": 1745512757043,
+      "contentHash": "28bf144269df6d570a855fed569fc8b9",
+      "sourceName": "blockchain/contracts/BlockchainPosts.sol",
+      "solcConfig": {
+        "version": "0.8.24",
+        "settings": {
+          "evmVersion": "paris",
+          "optimizer": {
+            "enabled": false,
+            "runs": 200
+          },
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.0"
+      ],
+      "artifacts": [
+        "BlockchainPosts"
+      ]
+    },
+    "C:\\Users\\ziga\\Projects\\FRI-MAG\\megla\\front-next\\blockchain\\contracts\\UserPublicKeys.sol": {
+      "lastModificationDate": 1745503810685,
+      "contentHash": "a3ab6914689ed40cc6017a1610859465",
       "sourceName": "blockchain/contracts/UserPublicKeys.sol",
       "solcConfig": {
         "version": "0.8.24",
@@ -37,9 +73,9 @@
         "UserPublicKeys"
       ]
     },
-    "/home/ziga/projects/liberachain/front-next/blockchain/contracts/UserRegistry.sol": {
-      "lastModificationDate": 1745497575659,
-      "contentHash": "6c7d9595d3b1edf534c377f72e813b7a",
+    "C:\\Users\\ziga\\Projects\\FRI-MAG\\megla\\front-next\\blockchain\\contracts\\UserRegistry.sol": {
+      "lastModificationDate": 1745503810686,
+      "contentHash": "3d183e4326f47f528ba7b68b9e1d99ac",
       "sourceName": "blockchain/contracts/UserRegistry.sol",
       "solcConfig": {
         "version": "0.8.24",
@@ -71,42 +107,6 @@
       ],
       "artifacts": [
         "UserRegistry"
-      ]
-    },
-    "/home/ziga/projects/liberachain/front-next/blockchain/contracts/BlockchainPosts.sol": {
-      "lastModificationDate": 1745500826467,
-      "contentHash": "e537a687050ea986756f3edae213bdb7",
-      "sourceName": "blockchain/contracts/BlockchainPosts.sol",
-      "solcConfig": {
-        "version": "0.8.24",
-        "settings": {
-          "evmVersion": "paris",
-          "optimizer": {
-            "enabled": false,
-            "runs": 200
-          },
-          "outputSelection": {
-            "*": {
-              "*": [
-                "abi",
-                "evm.bytecode",
-                "evm.deployedBytecode",
-                "evm.methodIdentifiers",
-                "metadata"
-              ],
-              "": [
-                "ast"
-              ]
-            }
-          }
-        }
-      },
-      "imports": [],
-      "versionPragmas": [
-        "^0.8.0"
-      ],
-      "artifacts": [
-        "BlockchainPosts"
       ]
     }
   }

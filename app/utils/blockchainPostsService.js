@@ -6,7 +6,7 @@ import { getContract, getProviderAndSigner, getCurrentUserAddress } from './bloc
 const blockchainPostsABI = [
   // Post creation and retrieval
   "function createPost(string memory _content, string memory _title, string memory _authorDid, string memory _authorName, string memory _contentType, string memory _visibility, string memory _ipfsCid, string memory _metadata) public payable returns (bytes32)",
-  "function getPost(bytes32 _postId) public view returns (string memory content, string memory title, string memory authorDid, string memory authorName, string memory contentType, uint256 timestamp, string memory visibility, string memory ipfsCid, string memory metadata)",
+  "function getPost(bytes32 _postId) public view returns (string memory content, string memory title, string memory authorDid, string memory authorName, string memory contentType, uint256 timestamp, string memory visibility, string memory ipfsCid, string memory metadata, uint256 donation)",
   "function getUserPostIds(string memory _authorDid) public view returns (bytes32[] memory)",
   "function getTotalPostsCount() public view returns (uint256)",
   "function getPaginatedPostIds(uint256 _offset, uint256 _limit) public view returns (bytes32[] memory)",
@@ -14,8 +14,10 @@ const blockchainPostsABI = [
   "function getPostFee() public view returns (uint256)",
   "function setPostFee(uint256 _newFee) public",
   "function setFeeCollector(address _newCollector) public",
+  "function getContractCreator() public view returns (address)",
   // Events
-  "event PostCreated(bytes32 indexed postId, string authorDid, uint256 timestamp, string visibility)"
+  "event PostCreated(bytes32 indexed postId, string authorDid, uint256 timestamp, string visibility, uint256 donation)",
+  "event DonationReceived(bytes32 indexed postId, uint256 donationAmount)"
 ];
 
 /**
@@ -54,9 +56,9 @@ export const getBlockchainPostFee = async () => {
 };
 
 /**
- * Create a post on the blockchain
+ * Create a post on the blockchain with optional donation
  * @param {Object} postData - The post data
- * @param {Object} options - Additional options
+ * @param {Object} options - Additional options including donation amount
  * @returns {Promise<{success: boolean, postId: string, error: string|null}>} Result
  */
 export const createBlockchainPost = async (postData, options = {}) => {
@@ -81,7 +83,15 @@ export const createBlockchainPost = async (postData, options = {}) => {
       metadata = '{}'
     } = postData;
     
-    // Create transaction with fee
+    // Get donation amount if provided
+    const donationAmount = options.donationAmount || '0';
+    
+    // Calculate total transaction value (fee + donation)
+    const feeWei = ethers.BigNumber.from(feeResult.feeWei);
+    const donationWei = ethers.utils.parseEther(donationAmount);
+    const totalValue = feeWei.add(donationWei);
+    
+    // Create transaction with fee + donation
     const tx = await contract.createPost(
       content,
       title,
@@ -91,7 +101,7 @@ export const createBlockchainPost = async (postData, options = {}) => {
       visibility,
       ipfsCid,
       metadata,
-      { value: ethers.BigNumber.from(feeResult.feeWei) }
+      { value: totalValue }
     );
     
     console.log('Blockchain post transaction sent:', tx.hash);
@@ -102,11 +112,13 @@ export const createBlockchainPost = async (postData, options = {}) => {
     
     // Try to extract postId from the transaction logs/events
     let postId = null;
+    let donationValue = null;
     for (const log of receipt.logs) {
       try {
         const parsedLog = contract.interface.parseLog(log);
         if (parsedLog.name === 'PostCreated') {
           postId = parsedLog.args.postId;
+          donationValue = parsedLog.args.donation;
           break;
         }
       } catch (e) {
@@ -119,7 +131,8 @@ export const createBlockchainPost = async (postData, options = {}) => {
       transactionHash: tx.hash,
       blockNumber: receipt.blockNumber,
       postId: postId || `unknown-${Date.now()}`,
-      postIdHex: postId ? ethers.utils.hexlify(postId) : null
+      postIdHex: postId ? ethers.utils.hexlify(postId) : null,
+      donation: donationValue ? ethers.utils.formatEther(donationValue) : donationAmount
     };
   } catch (error) {
     console.error('Error creating blockchain post:', error);
@@ -148,11 +161,15 @@ export const getBlockchainPost = async (postId) => {
       timestamp,
       visibility,
       ipfsCid,
-      metadata
+      metadata,
+      donation
     ] = await contract.getPost(postId);
     
     // Convert timestamp from blockchain (seconds) to JS timestamp (milliseconds)
     const jsTimestamp = Number(timestamp) * 1000;
+    
+    // Convert donation from wei to ETH
+    const donationEth = ethers.utils.formatEther(donation);
     
     return {
       success: true,
@@ -167,6 +184,7 @@ export const getBlockchainPost = async (postId) => {
         ipfsCid,
         metadata,
         postId,
+        donation: donationEth,
         isBlockchainPost: true
       }
     };
@@ -311,6 +329,29 @@ export const checkBalanceForPosting = async () => {
       success: false,
       hasBalance: false,
       error: error.message || 'Failed to check balance'
+    };
+  }
+};
+
+/**
+ * Get the contract creator address
+ * @returns {Promise<{success: boolean, address: string|null, error: string|null}>} Result
+ */
+export const getContractCreator = async () => {
+  try {
+    const contract = await getBlockchainPostsContract(false);
+    const creatorAddress = await contract.getContractCreator();
+    
+    return {
+      success: true,
+      address: creatorAddress
+    };
+  } catch (error) {
+    console.error('Error getting contract creator address:', error);
+    return {
+      success: false,
+      address: null,
+      error: error.message || 'Failed to get contract creator address'
     };
   }
 };
