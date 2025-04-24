@@ -6,6 +6,13 @@ import {
   hasS3Credentials, 
   getS3Gateway
 } from './ipfs-crud.js';
+import {
+  getBlockchainPost,
+  getUserBlockchainPosts,
+  getPublicBlockchainPosts,
+  checkBalanceForPosting,
+  getBlockchainPostFee
+} from './blockchainPostsService';
 
 // Reuse the IPFS configuration from ipfsService.js
 // We're using Infura's IPFS HTTP API, but you can use any IPFS provider or run your own node
@@ -348,24 +355,43 @@ export const getUserPosts = async (did) => {
     const userPosts = JSON.parse(localStorage.getItem('liberaChainUserPosts') || '{}');
     const postCids = userPosts[did] || [];
     
-    // Fetch each post content
-    const posts = await Promise.all(
+    // Fetch each post content from IPFS
+    const ipfsPosts = await Promise.all(
       postCids.map(async (cid) => {
         const postData = await retrievePostFromIPFS(cid);
         if (postData) {
           return {
             ...postData,
-            cid
+            cid,
+            source: 'ipfs'
           };
         }
         return null;
       })
     );
     
-    // Filter out any nulls and sort by timestamp (newest first)
-    return posts
-      .filter(post => post !== null)
-      .sort((a, b) => b.timestamp - a.timestamp);
+    // Also get blockchain posts for this user
+    let blockchainPosts = [];
+    try {
+      const blockchainResult = await getUserBlockchainPosts(did);
+      if (blockchainResult.success) {
+        blockchainPosts = blockchainResult.posts.map(post => ({
+          ...post,
+          source: 'blockchain'
+        }));
+      }
+    } catch (blockchainError) {
+      console.error('Error fetching blockchain posts:', blockchainError);
+    }
+    
+    // Combine posts from both sources
+    const allPosts = [
+      ...ipfsPosts.filter(post => post !== null),
+      ...blockchainPosts
+    ];
+    
+    // Sort by timestamp (newest first)
+    return allPosts.sort((a, b) => b.timestamp - a.timestamp);
     
   } catch (error) {
     console.error('Error getting user posts:', error);
@@ -397,16 +423,36 @@ export const getPublicPosts = async (limit = 50) => {
           return {
             ...postData,
             ...metadata,
-            cid
+            cid,
+            source: 'ipfs'
           };
         }
         return null;
       })
     );
     
+    // Also get blockchain posts
+    let blockchainPosts = [];
+    try {
+      const blockchainResult = await getPublicBlockchainPosts(0, 20);
+      if (blockchainResult.success) {
+        blockchainPosts = blockchainResult.posts.map(post => ({
+          ...post,
+          source: 'blockchain'
+        }));
+      }
+    } catch (blockchainError) {
+      console.error('Error fetching blockchain posts:', blockchainError);
+    }
+    
+    // Combine posts from both sources
+    const allPosts = [
+      ...posts.filter(post => post !== null),
+      ...blockchainPosts
+    ];
+    
     // Filter out nulls, sort by timestamp (newest first), and limit results
-    return posts
-      .filter(post => post !== null)
+    return allPosts
       .sort((a, b) => b.timestamp - a.timestamp)
       .slice(0, limit);
     
@@ -557,13 +603,13 @@ export const createImportedPost = async (data, authorInfo) => {
 
 /**
  * Add a comment to a post
- * @param {string} postCid - CID of the post being commented on
+ * @param {string} postIdentifier - CID or postId of the post being commented on
  * @param {Object} commentData - Comment data including author info and content
  * @returns {Promise<Object>} Result object with success status and new comment info
  */
-export const addCommentToPost = async (postCid, commentData) => {
+export const addCommentToPost = async (postIdentifier, commentData) => {
   try {
-    if (!postCid) throw new Error('Post CID is required');
+    if (!postIdentifier) throw new Error('Post identifier is required');
     if (!commentData.authorDid) throw new Error('Comment author DID is required');
     if (!commentData.content) throw new Error('Comment content is required');
     
@@ -578,19 +624,20 @@ export const addCommentToPost = async (postCid, commentData) => {
       content: commentData.content,
       timestamp: Date.now(),
       parentCommentId: commentData.parentCommentId || null, // For threaded comments
-      edited: false
+      edited: false,
+      postSource: commentData.postSource || 'ipfs' // Track if this is for a blockchain or IPFS post
     };
     
     // Get the existing comments for this post
     const postComments = JSON.parse(localStorage.getItem('liberaChainPostComments') || '{}');
     
     // Initialize if this is the first comment for the post
-    if (!postComments[postCid]) {
-      postComments[postCid] = [];
+    if (!postComments[postIdentifier]) {
+      postComments[postIdentifier] = [];
     }
     
     // Add the new comment
-    postComments[postCid].push(comment);
+    postComments[postIdentifier].push(comment);
     
     // Save back to storage
     localStorage.setItem('liberaChainPostComments', JSON.stringify(postComments));
@@ -601,7 +648,7 @@ export const addCommentToPost = async (postCid, commentData) => {
     return {
       success: true,
       comment,
-      postCid
+      postIdentifier
     };
   } catch (error) {
     console.error('Error adding comment:', error);
@@ -611,18 +658,18 @@ export const addCommentToPost = async (postCid, commentData) => {
 
 /**
  * Get comments for a specific post
- * @param {string} postCid - CID of the post
+ * @param {string} postIdentifier - CID or postId of the post
  * @returns {Array} Array of comments for the post
  */
-export const getPostComments = (postCid) => {
+export const getPostComments = (postIdentifier) => {
   try {
-    if (!postCid) return [];
+    if (!postIdentifier) return [];
     
     // Get all comments from storage
     const postComments = JSON.parse(localStorage.getItem('liberaChainPostComments') || '{}');
     
     // Get comments for this specific post
-    const comments = postComments[postCid] || [];
+    const comments = postComments[postIdentifier] || [];
     
     // Sort by timestamp (oldest first, for chronological display)
     return comments.sort((a, b) => a.timestamp - b.timestamp);
@@ -658,14 +705,14 @@ export const checkFriendship = (userDid, targetDid) => {
 
 /**
  * Delete a comment from a post
- * @param {string} postCid - CID of the post
+ * @param {string} postIdentifier - CID or postId of the post
  * @param {string} commentId - ID of the comment to delete
  * @param {string} userDid - DID of the user attempting to delete the comment
  * @returns {Promise<Object>} Result object with success status
  */
-export const deleteComment = async (postCid, commentId, userDid) => {
+export const deleteComment = async (postIdentifier, commentId, userDid) => {
   try {
-    if (!postCid) throw new Error('Post CID is required');
+    if (!postIdentifier) throw new Error('Post identifier is required');
     if (!commentId) throw new Error('Comment ID is required');
     if (!userDid) throw new Error('User DID is required');
     
@@ -673,24 +720,24 @@ export const deleteComment = async (postCid, commentId, userDid) => {
     const postComments = JSON.parse(localStorage.getItem('liberaChainPostComments') || '{}');
     
     // Check if there are comments for this post
-    if (!postComments[postCid]) {
+    if (!postComments[postIdentifier]) {
       throw new Error('No comments found for this post');
     }
     
     // Find the comment
-    const commentIndex = postComments[postCid].findIndex(comment => comment.id === commentId);
+    const commentIndex = postComments[postIdentifier].findIndex(comment => comment.id === commentId);
     
     if (commentIndex === -1) {
       throw new Error('Comment not found');
     }
     
     // Check if the user is the author of the comment
-    if (postComments[postCid][commentIndex].authorDid !== userDid) {
+    if (postComments[postIdentifier][commentIndex].authorDid !== userDid) {
       throw new Error('You can only delete your own comments');
     }
     
     // Remove the comment
-    postComments[postCid].splice(commentIndex, 1);
+    postComments[postIdentifier].splice(commentIndex, 1);
     
     // Save back to storage
     localStorage.setItem('liberaChainPostComments', JSON.stringify(postComments));
@@ -702,4 +749,20 @@ export const deleteComment = async (postCid, commentId, userDid) => {
     console.error('Error deleting comment:', error);
     throw error;
   }
+};
+
+/**
+ * Check if user can post to blockchain (has enough balance)
+ * @returns {Promise<Object>} Balance check result
+ */
+export const checkBlockchainPostingAbility = async () => {
+  return checkBalanceForPosting();
+};
+
+/**
+ * Get the current post fee for blockchain
+ * @returns {Promise<Object>} Fee information
+ */
+export const getBlockchainPostingFee = async () => {
+  return getBlockchainPostFee();
 };

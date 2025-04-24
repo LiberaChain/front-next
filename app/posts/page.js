@@ -14,8 +14,12 @@ import {
   addCommentToPost,
   deleteComment,
   checkFriendship,
-  initializeMockPosts
+  initializeMockPosts,
+  checkBlockchainPostingAbility,
+  getBlockchainPostingFee
 } from '../utils/postsService';
+
+import { createBlockchainPost } from '../utils/blockchainPostsService';
 
 export default function PostsPage() {
   const router = useRouter();
@@ -30,6 +34,10 @@ export default function PostsPage() {
   const [postContent, setPostContent] = useState('');
   const [postTitle, setPostTitle] = useState('');
   const [postVisibility, setPostVisibility] = useState('public');
+  const [postStorage, setPostStorage] = useState('ipfs'); // 'ipfs' or 'blockchain'
+  const [blockchainFee, setBlockchainFee] = useState('0.001');
+  const [canUseBlockchain, setCanUseBlockchain] = useState(false);
+  const [showFeeWarning, setShowFeeWarning] = useState(false);
   
   // For import
   const [importUrl, setImportUrl] = useState('');
@@ -93,6 +101,30 @@ export default function PostsPage() {
     
     checkAuth();
   }, [router]);
+
+  // Check blockchain posting ability
+  useEffect(() => {
+    const checkBlockchainAbility = async () => {
+      try {
+        // Check if user can post to blockchain
+        const balanceResult = await checkBlockchainPostingAbility();
+        setCanUseBlockchain(balanceResult.success && balanceResult.hasBalance);
+        
+        // Get current fee
+        const feeResult = await getBlockchainPostingFee();
+        if (feeResult.success) {
+          setBlockchainFee(feeResult.fee);
+        }
+      } catch (error) {
+        console.error('Error checking blockchain posting ability:', error);
+        setCanUseBlockchain(false);
+      }
+    };
+    
+    if (profileData?.wallet) {
+      checkBlockchainAbility();
+    }
+  }, [profileData]);
   
   // Load posts based on current display mode
   const loadPosts = async () => {
@@ -152,33 +184,52 @@ export default function PostsPage() {
         content: postContent,
         authorDid: profileData.did,
         authorName: profileData.displayName || `User-${profileData.wallet?.substring(2, 8)}`,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        contentType: 'text',
+        visibility: postVisibility
       };
       
-      // Upload post to IPFS
-      const cid = await uploadPostToIPFS(postData);
-      
-      if (!cid) {
-        throw new Error('Failed to upload post to IPFS');
+      // Choose storage method based on user selection
+      if (postStorage === 'blockchain') {
+        // Post directly to blockchain
+        const blockchainResult = await createBlockchainPost(postData);
+        
+        if (!blockchainResult.success) {
+          throw new Error('Failed to post to blockchain: ' + (blockchainResult.error || 'Unknown error'));
+        }
+        
+        // Success! Clear form and show message
+        setPostTitle('');
+        setPostContent('');
+        setPostVisibility('public');
+        setSuccess('Post published successfully to blockchain! Transaction: ' + 
+          blockchainResult.transactionHash.substring(0, 10) + '...');
+      } else {
+        // Use traditional IPFS posting
+        const cid = await uploadPostToIPFS(postData);
+        
+        if (!cid) {
+          throw new Error('Failed to upload post to IPFS');
+        }
+        
+        // Store post metadata
+        const metadataResult = storePostMetadata(cid, {
+          authorDid: profileData.did,
+          authorName: profileData.displayName || `User-${profileData.wallet?.substring(2, 8)}`,
+          visibility: postVisibility,
+          contentPreview: postContent.substring(0, 100) + (postContent.length > 100 ? '...' : '')
+        });
+        
+        if (!metadataResult) {
+          throw new Error('Failed to store post metadata');
+        }
+        
+        // Success! Clear form and show message
+        setPostTitle('');
+        setPostContent('');
+        setPostVisibility('public');
+        setSuccess('Post published successfully to IPFS!');
       }
-      
-      // Store post metadata
-      const metadataResult = storePostMetadata(cid, {
-        authorDid: profileData.did,
-        authorName: profileData.displayName || `User-${profileData.wallet?.substring(2, 8)}`,
-        visibility: postVisibility,
-        contentPreview: postContent.substring(0, 100) + (postContent.length > 100 ? '...' : '')
-      });
-      
-      if (!metadataResult) {
-        throw new Error('Failed to store post metadata');
-      }
-      
-      // Success! Clear form and show message
-      setPostTitle('');
-      setPostContent('');
-      setPostVisibility('public');
-      setSuccess('Post published successfully!');
       
       // Reload posts to show the new one
       await loadPosts();
@@ -186,7 +237,7 @@ export default function PostsPage() {
       // Clear success message after a delay
       setTimeout(() => {
         setSuccess('');
-      }, 3000);
+      }, 5000);
       
     } catch (error) {
       console.error('Error creating post:', error);
@@ -374,6 +425,12 @@ export default function PostsPage() {
     return new Date(timestamp).toLocaleString();
   };
 
+  // Handle storage type change
+  const handleStorageTypeChange = (type) => {
+    setPostStorage(type);
+    setShowFeeWarning(type === 'blockchain');
+  };
+
   // Get icon for post source
   const getSourceIcon = (source) => {
     switch (source) {
@@ -551,11 +608,73 @@ export default function PostsPage() {
                       </select>
                     </div>
                   </div>
+
+                  <div>
+                    <label htmlFor="post-storage" className="block text-sm font-medium text-gray-300">
+                      Storage Method
+                    </label>
+                    <div className="mt-1">
+                      <div className="flex space-x-4">
+                        <div className="flex items-center">
+                          <input
+                            id="storage-ipfs"
+                            name="storage"
+                            type="radio"
+                            checked={postStorage === 'ipfs'}
+                            onChange={() => handleStorageTypeChange('ipfs')}
+                            className="h-4 w-4 border-gray-600 text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <label htmlFor="storage-ipfs" className="ml-2 block text-sm text-gray-300">
+                            IPFS (Free)
+                          </label>
+                        </div>
+                        <div className="flex items-center">
+                          <input
+                            id="storage-blockchain"
+                            name="storage"
+                            type="radio"
+                            checked={postStorage === 'blockchain'}
+                            onChange={() => handleStorageTypeChange('blockchain')}
+                            disabled={!canUseBlockchain}
+                            className="h-4 w-4 border-gray-600 text-purple-600 focus:ring-purple-500 disabled:opacity-50"
+                          />
+                          <label 
+                            htmlFor="storage-blockchain" 
+                            className={`ml-2 block text-sm ${canUseBlockchain ? 'text-gray-300' : 'text-gray-500'}`}
+                          >
+                            Blockchain (Fee: {blockchainFee} ETH)
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {showFeeWarning && (
+                    <div className="rounded-md bg-yellow-900/30 p-3 border border-yellow-800/50">
+                      <div className="flex">
+                        <div className="text-sm text-yellow-500">
+                          <span className="font-bold">Warning:</span> Posting directly to the blockchain will incur a transaction fee of approximately {blockchainFee} ETH.
+                          Your content will be permanently stored on the blockchain and cannot be removed.
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {postStorage === 'blockchain' && !canUseBlockchain && (
+                    <div className="rounded-md bg-red-900/30 p-3 border border-red-800/50">
+                      <div className="flex">
+                        <div className="text-sm text-red-500">
+                          <span className="font-bold">Error:</span> You don't have enough ETH to post to the blockchain.
+                          Make sure your wallet is connected and has sufficient funds.
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   
                   <div>
                     <button
                       type="submit"
-                      disabled={posting}
+                      disabled={posting || (postStorage === 'blockchain' && !canUseBlockchain)}
                       className="flex w-full justify-center rounded-md border border-transparent bg-emerald-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:opacity-50"
                     >
                       {posting ? (
@@ -567,7 +686,7 @@ export default function PostsPage() {
                           Publishing...
                         </>
                       ) : (
-                        'Publish Post'
+                        `Publish Post ${postStorage === 'blockchain' ? 'to Blockchain' : 'to IPFS'}`
                       )}
                     </button>
                   </div>
@@ -677,10 +796,18 @@ export default function PostsPage() {
             <div className="mt-6 bg-gray-800 rounded-lg shadow p-6 border border-gray-700">
               <h3 className="text-sm font-medium text-white">How Posts Work</h3>
               <p className="mt-2 text-xs text-gray-400">
-                Your posts are stored on IPFS, a decentralized storage network. 
-                Each post gets a unique content identifier (CID) that links to your DID.
-                Public posts can be viewed by anyone, while friends-only posts are only visible to your connections.
+                Choose where to store your post:
               </p>
+              <ul className="mt-2 text-xs text-gray-400 space-y-2">
+                <li className="flex items-start">
+                  <span className="text-emerald-400 mr-2">•</span>
+                  <span><strong>IPFS:</strong> Content is stored on a distributed network. Free, but could be lost if not pinned.</span>
+                </li>
+                <li className="flex items-start">
+                  <span className="text-purple-400 mr-2">•</span>
+                  <span><strong>Blockchain:</strong> Content is permanently stored on-chain. Costs a small fee, but lasts forever.</span>
+                </li>
+              </ul>
               
               {postMode === 'import' && (
                 <div className="mt-4 rounded-md bg-blue-900/20 p-4">
@@ -735,7 +862,7 @@ export default function PostsPage() {
                 <div className="mt-6 space-y-6">
                   {posts.length > 0 ? (
                     posts.map((post) => (
-                      <div key={post.cid} className="bg-gray-700 rounded-md p-4 border border-gray-600">
+                      <div key={post.cid || post.postId} className="bg-gray-700 rounded-md p-4 border border-gray-600">
                         <div className="flex justify-between">
                           <div>
                             <h3 className="text-md font-medium text-white">{post.title}</h3>
@@ -761,6 +888,18 @@ export default function PostsPage() {
                             }`}>
                               {post.visibility === 'public' ? 'Public' : 'Friends Only'}
                             </span>
+                            
+                            {post.source === 'blockchain' && (
+                              <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-purple-900/30 text-purple-400">
+                                On-Chain
+                              </span>
+                            )}
+                            
+                            {post.source === 'ipfs' && (
+                              <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-emerald-900/30 text-emerald-400">
+                                IPFS
+                              </span>
+                            )}
                           </div>
                         </div>
                         
@@ -786,27 +925,31 @@ export default function PostsPage() {
                         
                         <div className="mt-4 pt-2 border-t border-gray-600 flex justify-between items-center">
                           <div className="text-xs text-gray-400">
-                            {post.cid && (
+                            {post.source === 'blockchain' ? (
+                              <span title={`On-chain post ID: ${post.postId}`}>
+                                Blockchain ID: {post.postId?.substring(0, 10)}...
+                              </span>
+                            ) : post.cid ? (
                               <span title={`IPFS CID: ${post.cid}`}>
                                 IPFS: {post.cid.substring(0, 8)}...{post.cid.substring(post.cid.length - 4)}
                               </span>
-                            )}
+                            ) : null}
                           </div>
                           
                           <button
-                            onClick={() => toggleComments(post.cid)}
+                            onClick={() => toggleComments(post.cid || post.postId)}
                             className="text-xs text-blue-400 hover:text-blue-300 flex items-center"
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                             </svg>
-                            {commentsMap[post.cid]?.length || 0} Comments
-                            {expandedPosts[post.cid] ? ' (hide)' : ' (show)'}
+                            {commentsMap[post.cid || post.postId]?.length || 0} Comments
+                            {expandedPosts[post.cid || post.postId] ? ' (hide)' : ' (show)'}
                           </button>
                         </div>
                         
                         {/* Comments Section */}
-                        {expandedPosts[post.cid] && (
+                        {expandedPosts[post.cid || post.postId] && (
                           <div className="mt-4 pt-3 border-t border-gray-600">
                             <h4 className="text-sm font-medium text-gray-300 mb-2">Comments</h4>
                             

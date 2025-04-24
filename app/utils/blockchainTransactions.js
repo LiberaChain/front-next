@@ -69,7 +69,7 @@ try {
 console.log('[DEBUG] Using contract addresses:', contractAddresses);
 
 // Initialize provider and signer
-const getProviderAndSigner = async () => {
+export const getProviderAndSigner = async () => {
   if (typeof window === 'undefined') {
     // Server-side rendering - use a provider for the testnet
     const provider = new ethers.providers.JsonRpcProvider(process.env.NEXT_PUBLIC_RPC_URL || "http://localhost:8545");
@@ -103,7 +103,7 @@ const getProviderAndSigner = async () => {
 };
 
 // Get contract instance with specified ABI
-const getContract = async (contractName, withSigner = true) => {
+export const getContract = async (contractName, withSigner = true, customABI = null) => {
   if (!contractAddresses[contractName]) {
     console.error(`[DEBUG] Contract address for ${contractName} is not set`);
     throw new Error(`Contract address not found for ${contractName}. Please make sure the contract is deployed and the address is set.`);
@@ -119,7 +119,21 @@ const getContract = async (contractName, withSigner = true) => {
     throw new Error('Signer not available. Are you connected to MetaMask?');
   }
 
-  const abi = contractName === 'UserRegistry' ? userRegistryABI : userPublicKeysABI;
+  // Use custom ABI if provided, otherwise use default ABIs
+  let abi;
+  if (customABI) {
+    abi = customABI;
+  } else {
+    // Select ABI based on contract name
+    if (contractName === 'UserRegistry') {
+      abi = userRegistryABI;
+    } else if (contractName === 'BlockchainPosts') {
+      // Default empty ABI - actual one should be passed via customABI
+      abi = [];
+    } else {
+      abi = userPublicKeysABI;
+    }
+  }
 
   return new ethers.Contract(
     contractAddresses[contractName],
@@ -417,7 +431,7 @@ export const generateAsymmetricKeys = async () => {
     // Create a random wallet
     const wallet = ethers.Wallet.createRandom();
     
-    // Get the wallet's address, private key, and public key
+    // Get the wallet's address, privateKey, and publicKey
     const address = wallet.address;
     const privateKey = wallet.privateKey;
     const publicKey = wallet.publicKey;
