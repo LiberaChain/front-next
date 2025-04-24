@@ -6,7 +6,7 @@
       "contentHash": "8f3b7536c385893eeb424d7d841ee198",
       "sourceName": "blockchain/contracts/UserPublicKeys.sol",
       "solcConfig": {
-        "version": "0.8.29",
+        "version": "0.8.24",
         "settings": {
           "evmVersion": "paris",
           "optimizer": {
@@ -35,6 +35,42 @@
       ],
       "artifacts": [
         "UserPublicKeys"
+      ]
+    },
+    "/home/ziga/projects/liberachain/front-next/blockchain/contracts/UserRegistry.sol": {
+      "lastModificationDate": 1745497575659,
+      "contentHash": "6c7d9595d3b1edf534c377f72e813b7a",
+      "sourceName": "blockchain/contracts/UserRegistry.sol",
+      "solcConfig": {
+        "version": "0.8.24",
+        "settings": {
+          "evmVersion": "paris",
+          "optimizer": {
+            "enabled": false,
+            "runs": 200
+          },
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.0"
+      ],
+      "artifacts": [
+        "UserRegistry"
       ]
     }
   }

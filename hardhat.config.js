@@ -3,7 +3,7 @@ require('@nomiclabs/hardhat-ethers');
 require('dotenv').config();
 
 module.exports = {
-  solidity: "0.8.29",
+  solidity: "0.8.24",  // Updated to a valid Solidity version
   paths: {
     artifacts: "./blockchain/artifacts",
     sources: "./blockchain/contracts",
