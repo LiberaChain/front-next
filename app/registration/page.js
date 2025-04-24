@@ -11,7 +11,8 @@ import { useRouter } from 'next/navigation';
 import { 
   providerConfig, 
   generateAsymmetricKeys, 
-  registerPublicKeyOnChain, 
+  registerPublicKeyOnChain,
+  verifyUserOnBlockchain,
   storeMessagingKeys 
 } from '../utils/blockchainTransactions';
 
@@ -29,6 +30,7 @@ export default function Registration() {
   const [ethersProvider, setEthersProvider] = useState(null);
   const [didResolver, setDidResolver] = useState(null);
   const [keyPair, setKeyPair] = useState(null);
+  const [blockchainVerification, setBlockchainVerification] = useState({ verified: false, checking: false });
   
   // Initialize DID resolver and ethers provider
   useEffect(() => {
@@ -80,13 +82,35 @@ export default function Registration() {
         setDidIdentifier(did);
         setWalletAddress(address);
         setIsWalletConnected(true);
-        setDidCreated(true);
+        
         console.log('Wallet connected. DID:', did);
         
-        // Generate asymmetric keys for secure messaging using our utility function
-        const keys = await generateAsymmetricKeys();
-        setKeyPair(keys);
-        console.log('Messaging key pair generated:', keys.address);
+        // Check if user already exists on blockchain
+        setBlockchainVerification({ verified: false, checking: true });
+        const verificationResult = await verifyUserOnBlockchain(did);
+        
+        if (verificationResult.success && verificationResult.verified) {
+          console.log('User already exists on blockchain. Registration time:', verificationResult.registrationTime);
+          setBlockchainVerification({
+            verified: true,
+            checking: false,
+            registrationTime: verificationResult.registrationTime,
+            publicKey: verificationResult.publicKey
+          });
+          
+          // User exists, but we'll still allow registration to continue
+          // Just show them they're already registered
+          setDidCreated(true);
+        } else {
+          console.log('User does not exist on blockchain yet. Will be registered.');
+          setBlockchainVerification({ verified: false, checking: false });
+          
+          // Generate new asymmetric keys for secure messaging
+          const keys = await generateAsymmetricKeys();
+          setKeyPair(keys);
+          console.log('New messaging key pair generated:', keys.address);
+          setDidCreated(true);
+        }
       }
     } catch (err) {
       setError(`Failed to connect wallet: ${err.message || 'Unknown error'}`);
@@ -126,7 +150,8 @@ export default function Registration() {
     const authData = {
       did,
       expiry: expiryTime,
-      wallet: walletAddress
+      wallet: walletAddress,
+      verified: true, // Now this is a blockchain-verified account
     };
     localStorage.setItem('liberaChainAuth', JSON.stringify(authData));
   };
@@ -151,6 +176,23 @@ export default function Registration() {
       try {
         setLoading(true);
         
+        // If blockchain verification shows the user is already registered
+        if (blockchainVerification.verified) {
+          console.log('User already registered on blockchain, skipping registration');
+          // Still store identity data locally
+          storeIdentityInLocalStorage();
+          
+          // Also store auth information with 24-hour expiry
+          const expiryTime = Date.now() + (24 * 60 * 60 * 1000);
+          storeAuthInLocalStorage(didIdentifier, expiryTime);
+          
+          // Move to success step
+          await new Promise(resolve => setTimeout(resolve, 500));
+          setLoading(false);
+          setStep(3);
+          return;
+        }
+        
         // If we have a key pair, register the public key on the blockchain
         if (keyPair) {
           // Get signer for blockchain transaction - using ethers v5 syntax
@@ -159,7 +201,14 @@ export default function Registration() {
           
           // Register the public key on the blockchain using our utility function
           // Pass the DID as the userId to ensure we can retrieve it later
-          await registerPublicKeyOnChain(signer, keyPair.publicKey, didIdentifier);
+          const registrationResult = await registerPublicKeyOnChain(signer, keyPair.publicKey, didIdentifier);
+          
+          if (!registrationResult.success) {
+            throw new Error(`Blockchain registration failed: ${registrationResult.error || 'Unknown error'}`);
+          }
+          
+          console.log('Registration successful on blockchain:', registrationResult);
+          
         } else {
           throw new Error('Communication keys were not generated properly');
         }
@@ -230,6 +279,7 @@ export default function Registration() {
                   <li>Your wallet address generates your unique DID</li>
                   <li>Secure messaging keys are created for encrypted communication</li>
                   <li>Your public key is stored on-chain and private key in your wallet</li>
+                  <li>Your account is only valid if registered on the blockchain</li>
                   <li>No central database storing your personal data</li>
                 </ul>
               </div>
@@ -300,7 +350,36 @@ export default function Registration() {
                     </div>
                   </div>
                   
-                  {keyPair && (
+                  {/* Show blockchain verification status */}
+                  {blockchainVerification.checking && (
+                    <div className="rounded-md bg-gray-700 p-4">
+                      <div className="flex items-center">
+                        <svg className="animate-spin -ml-1 mr-3 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span className="text-sm text-gray-300">Checking blockchain registration...</span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {blockchainVerification.verified && !blockchainVerification.checking && (
+                    <div className="rounded-md bg-green-900/30 p-4">
+                      <div className="flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                        <div>
+                          <span className="text-sm font-medium text-green-400">Already registered on blockchain</span>
+                          <p className="text-xs text-gray-300 mt-1">
+                            Your identity was registered on {new Date(blockchainVerification.registrationTime).toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {!blockchainVerification.verified && !blockchainVerification.checking && keyPair && (
                     <div className="rounded-md bg-gray-700 p-4">
                       <div className="flex flex-col">
                         <span className="text-sm font-medium text-gray-300">Messaging Key Generated:</span>
@@ -364,9 +443,9 @@ export default function Registration() {
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
-                        Finalizing...
+                        {blockchainVerification.verified ? 'Completing...' : 'Registering on Blockchain...'}
                       </>
-                    ) : "Complete Registration"}
+                    ) : (blockchainVerification.verified ? "Complete Registration" : "Register on Blockchain")}
                   </button>
                 </div>
               </form>
@@ -385,7 +464,7 @@ export default function Registration() {
               <div>
                 <h3 className="text-lg font-medium text-white">Registration successful!</h3>
                 <p className="mt-1 text-sm text-gray-400">
-                  Your decentralized identity has been created successfully.
+                  Your decentralized identity has been {blockchainVerification.verified ? 'verified' : 'created'} successfully.
                 </p>
               </div>
 
@@ -406,7 +485,7 @@ export default function Registration() {
                   
                   <div className="mt-4 rounded-md bg-blue-900/30 p-2">
                     <p className="text-xs text-blue-300">
-                      <strong>Important:</strong> Your identity and messaging keys are controlled by your private keys. 
+                      <strong>Important:</strong> Your identity is now securely registered on the blockchain. 
                       Make sure you have backed up your wallet recovery phrase securely!
                     </p>
                   </div>

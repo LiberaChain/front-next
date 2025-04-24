@@ -8,16 +8,10 @@ import { Resolver } from 'did-resolver';
 import { getResolver as getEthrResolver } from 'ethr-did-resolver';
 import { verifyJWT, decodeJWT } from '@decentralized-identity/did-auth-jose';
 import { ethers } from 'ethers';
-
-// Configuration for Ethereum networks
-const providerConfig = {
-  // Public RPC endpoint - no central authority
-
-  rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com', // Sepolia testnet for development
-  name: 'sepolia',
-  chainId: '0x5',
-  registry: '0xdca7ef03e98e0dc2b855be647c39abe984fcf21b' // Registry address for sepolia
-};
+import { 
+  providerConfig, 
+  verifyUserOnBlockchain
+} from '../utils/blockchainTransactions';
 
 export default function Login() {
   const router = useRouter();
@@ -32,7 +26,8 @@ export default function Login() {
   const [walletAddress, setWalletAddress] = useState('');
   const [signedMessage, setSignedMessage] = useState('');
   const [didResolver, setDidResolver] = useState(null);
-  const [isUserRegistered, setIsUserRegistered] = useState(true); // Default to true, will check during connection
+  const [isUserRegistered, setIsUserRegistered] = useState(false);
+  const [blockchainVerification, setBlockchainVerification] = useState({ verified: false, checking: false });
   
   // Initialize DID resolver and ethers provider
   useEffect(() => {
@@ -44,8 +39,7 @@ export default function Login() {
         console.log('DID resolver initialized successfully');
         
         // Initialize ethers provider - connecting directly to public node
-        // Updated to use new ethers provider syntax
-        const provider = new ethers.JsonRpcProvider(providerConfig.rpcUrl);
+        const provider = new ethers.providers.JsonRpcProvider(providerConfig.networks[0].rpcUrl);
         setEthersProvider(provider);
         console.log('Ethers provider initialized successfully');
       } catch (err) {
@@ -65,20 +59,31 @@ export default function Login() {
     }
   }, [didVerification, didChallenge]);
 
-  // Check if user is registered
-  const checkUserRegistration = (address) => {
+  // Check if user is registered on the blockchain
+  const checkUserRegistration = async (did) => {
     try {
-      // Check if there's a stored identity for this user
-      const storedIdentity = localStorage.getItem('liberaChainIdentity');
-      if (!storedIdentity) {
+      setBlockchainVerification({ verified: false, checking: true });
+      
+      // Check blockchain registration
+      const verificationResult = await verifyUserOnBlockchain(did);
+      
+      if (verificationResult.success && verificationResult.verified) {
+        console.log('User verified on blockchain. Registration time:', verificationResult.registrationTime);
+        setBlockchainVerification({
+          verified: true,
+          checking: false,
+          registrationTime: verificationResult.registrationTime,
+          publicKey: verificationResult.publicKey
+        });
+        return true;
+      } else {
+        console.log('User not verified on blockchain:', verificationResult.error);
+        setBlockchainVerification({ verified: false, checking: false });
         return false;
       }
-      
-      const identity = JSON.parse(storedIdentity);
-      // Check if the wallet address matches
-      return identity.wallet && identity.wallet.toLowerCase() === address.toLowerCase();
     } catch (err) {
       console.error("Error checking user registration:", err);
+      setBlockchainVerification({ verified: false, checking: false });
       return false;
     }
   };
@@ -97,12 +102,11 @@ export default function Login() {
       }
 
       // Connect directly to the user's wallet - no intermediary server
-      // Updated to use new ethers Web3Provider syntax
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
       
       // Request account access from user's wallet
-      const accounts = await provider.send("eth_requestAccounts", []);
-      const signer = await provider.getSigner();
+      await window.ethereum.request({ method: 'eth_requestAccounts' });
+      const signer = provider.getSigner();
       const address = await signer.getAddress();
       
       if (address) {
@@ -113,14 +117,14 @@ export default function Login() {
         setIsWalletConnected(true);
         console.log('Wallet connected. DID:', did);
         
-        // Check if user is registered
-        const isRegistered = checkUserRegistration(address);
+        // Check if user is registered on the blockchain
+        const isRegistered = await checkUserRegistration(did);
         setIsUserRegistered(isRegistered);
         
         // If not registered, redirect to registration page
         if (!isRegistered) {
-          console.log('User not registered. Redirecting to registration...');
-          setError('No account found for this wallet. Starting registration process...');
+          console.log('User not registered on blockchain. Redirecting to registration...');
+          setError('Your account is not registered on the blockchain. Redirecting to registration...');
           // Wait a moment to show the error message before redirecting
           setTimeout(() => {
             router.push('/registration');
@@ -142,9 +146,8 @@ export default function Login() {
         throw new Error("Wallet not connected");
       }
 
-      // Updated to use new ethers BrowserProvider syntax
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const signer = provider.getSigner();
       
       // User signs the challenge directly with their private key
       // No server involved - this is pure client-side cryptography
@@ -162,8 +165,7 @@ export default function Login() {
   const verifySignature = async (message, signature, address) => {
     try {
       // Recover the address from the signature using pure cryptography
-      // Updated to use new ethers verifyMessage syntax
-      const recoveredAddress = ethers.verifyMessage(message, signature);
+      const recoveredAddress = ethers.utils.verifyMessage(message, signature);
       
       // Check if recovered address matches the connected wallet
       return recoveredAddress.toLowerCase() === address.toLowerCase();
@@ -179,7 +181,9 @@ export default function Login() {
     const authData = {
       did,
       expiry: expiryTime,
-      wallet: walletAddress
+      wallet: walletAddress,
+      verified: blockchainVerification.verified, // Add blockchain verification status
+      registrationTime: blockchainVerification.registrationTime
     };
     localStorage.setItem('liberaChainAuth', JSON.stringify(authData));
   };
@@ -198,6 +202,14 @@ export default function Login() {
     try {
       setLoading(true);
       setError('');
+      
+      // Verify the user is registered on the blockchain again to make sure
+      if (!blockchainVerification.verified) {
+        const isRegistered = await checkUserRegistration(userDid);
+        if (!isRegistered) {
+          throw new Error("Account not found on blockchain. Please register first.");
+        }
+      }
       
       // 1. Let the user sign the challenge with their wallet
       console.log(`Challenge for signing: ${didChallenge}`);
@@ -218,7 +230,7 @@ export default function Login() {
       
       setDidVerificationComplete(true);
       
-      // Navigate after successful verification - changed from '/' to '/dashboard'
+      // Navigate after successful verification
       await new Promise(resolve => setTimeout(resolve, 1000));
       router.push('/dashboard');
       
@@ -293,6 +305,36 @@ export default function Login() {
                             className="mx-auto border-4 border-white p-1 rounded-md"
                           />
                         </div>
+                        
+                        {/* Show blockchain verification status */}
+                        {blockchainVerification.checking && (
+                          <div className="rounded-md bg-gray-800 p-3 mb-4">
+                            <div className="flex items-center justify-center">
+                              <svg className="animate-spin -ml-1 mr-3 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                              <span className="text-sm text-gray-300">Verifying blockchain registration...</span>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {blockchainVerification.verified && !blockchainVerification.checking && (
+                          <div className="rounded-md bg-green-900/30 p-3 mb-4">
+                            <div className="flex items-center justify-center">
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                              </svg>
+                              <div>
+                                <span className="text-sm font-medium text-green-400">Verified on blockchain</span>
+                                <p className="text-xs text-gray-300">
+                                  Registered on {new Date(blockchainVerification.registrationTime).toLocaleDateString()}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        
                         <p className="text-sm text-gray-300 mb-4 text-center">
                           Scan this QR code with your DID wallet app to authenticate
                         </p>
@@ -310,7 +352,7 @@ export default function Login() {
                         
                         <button
                           onClick={handleDidVerify}
-                          disabled={loading}
+                          disabled={loading || !blockchainVerification.verified}
                           className="mt-4 w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50"
                         >
                           {loading ? (
@@ -319,9 +361,13 @@ export default function Login() {
                                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                               </svg>
-                              Verifying on-chain...
+                              Verifying signature...
                             </>
-                          ) : "Sign & Verify"}
+                          ) : (
+                            <>
+                              {!blockchainVerification.verified ? "Account Not Verified" : "Sign & Verify"}
+                            </>
+                          )}
                         </button>
                       </>
                     )}

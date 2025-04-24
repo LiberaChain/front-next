@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 
-// Define ABI directly to avoid build issues
+// Define ABIs directly to avoid build issues
 const userPublicKeysABI = [
   // Public key management functions
   "function setPublicKey(string memory userId, string memory publicKey) public",
@@ -8,6 +8,17 @@ const userPublicKeysABI = [
   "function publicKeyExists(string memory userId) public view returns (bool)",
   // Events
   "event PublicKeySet(string indexed userId, string publicKey)"
+];
+
+// ABI for the new UserRegistry contract
+const userRegistryABI = [
+  // User registration functions
+  "function registerUser(string memory did, string memory publicKey) public",
+  "function userExists(string memory did) public view returns (bool)",
+  "function getUser(string memory did) public view returns (bool exists, string memory publicKey, uint256 registrationTime)",
+  "function updatePublicKey(string memory did, string memory newPublicKey) public",
+  // Events
+  "event UserRegistered(string indexed did, string publicKey)"
 ];
 
 // Provider configuration for DID resolver
@@ -21,32 +32,41 @@ export const providerConfig = {
   ]
 };
 
-// Try to get contract address, with fallbacks
-let contractAddress;
+// Try to get contract addresses, with fallbacks
+let contractAddresses = {};
 try {
   // First try to load from artifact file
   if (typeof window !== 'undefined') {
     try {
       // Try dynamic import during runtime
       const addresses = require('../../blockchain/artifacts/contracts/contract-address.json');
-      contractAddress = addresses.UserPublicKeys;
-      console.log('[DEBUG] Loaded contract address from artifacts:', contractAddress);
+      contractAddresses = addresses;
+      console.log('[DEBUG] Loaded contract addresses from artifacts:', contractAddresses);
     } catch (error) {
-      console.warn('[DEBUG] Contract address file not found, using fallback address');
-      // Fallback to hardcoded address for local Hardhat network
-      contractAddress = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
+      console.warn('[DEBUG] Contract address file not found, using fallback addresses');
+      // Fallback to hardcoded addresses for local Hardhat network
+      contractAddresses = {
+        UserPublicKeys: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
+        UserRegistry: '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512'
+      };
     }
   } else {
-    // Server-side, use env variable or fallback
-    contractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || '0x5FbDB2315678afecb367f032d93F642f64180aa3';
+    // Server-side, use env variables or fallbacks
+    contractAddresses = {
+      UserPublicKeys: process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || '0x5FbDB2315678afecb367f032d93F642f64180aa3',
+      UserRegistry: process.env.NEXT_PUBLIC_REGISTRY_ADDRESS || '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512'
+    };
   }
 } catch (error) {
-  console.error('[DEBUG] Error loading contract address:', error);
-  // Fallback to hardcoded address for local Hardhat network
-  contractAddress = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
+  console.error('[DEBUG] Error loading contract addresses:', error);
+  // Fallback to hardcoded addresses for local Hardhat network
+  contractAddresses = {
+    UserPublicKeys: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
+    UserRegistry: '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512'
+  };
 }
 
-console.log('[DEBUG] Using contract address:', contractAddress);
+console.log('[DEBUG] Using contract addresses:', contractAddresses);
 
 // Initialize provider and signer
 const getProviderAndSigner = async () => {
@@ -82,14 +102,14 @@ const getProviderAndSigner = async () => {
   }
 };
 
-// Get contract instance
-const getContract = async (withSigner = true) => {
-  if (!contractAddress) {
-    console.error('[DEBUG] Contract address is not set');
-    throw new Error('Contract address not found. Please make sure the contract is deployed and the address is set.');
+// Get contract instance with specified ABI
+const getContract = async (contractName, withSigner = true) => {
+  if (!contractAddresses[contractName]) {
+    console.error(`[DEBUG] Contract address for ${contractName} is not set`);
+    throw new Error(`Contract address not found for ${contractName}. Please make sure the contract is deployed and the address is set.`);
   }
 
-  console.log('[DEBUG] Getting contract at address:', contractAddress);
+  console.log(`[DEBUG] Getting ${contractName} contract at address:`, contractAddresses[contractName]);
   
   const { provider, signer, account } = await getProviderAndSigner();
   console.log('[DEBUG] Provider/signer initialized, account:', account);
@@ -99,11 +119,18 @@ const getContract = async (withSigner = true) => {
     throw new Error('Signer not available. Are you connected to MetaMask?');
   }
 
+  const abi = contractName === 'UserRegistry' ? userRegistryABI : userPublicKeysABI;
+
   return new ethers.Contract(
-    contractAddress,
-    userPublicKeysABI,
+    contractAddresses[contractName],
+    abi,
     withSigner && signer ? signer : provider
   );
+};
+
+// Legacy support for old code
+const getPublicKeysContract = async (withSigner = true) => {
+  return getContract('UserPublicKeys', withSigner);
 };
 
 // Set a user's public key
@@ -137,7 +164,7 @@ export const setUserPublicKey = async (userId, publicKey) => {
     
     console.log('[DEBUG] ID being used for transaction:', idToUse);
     
-    const contract = await getContract();
+    const contract = await getPublicKeysContract();
     const tx = await contract.setPublicKey(idToUse, publicKey);
     console.log('[DEBUG] Transaction sent:', tx.hash);
     
@@ -175,7 +202,7 @@ export const getUserPublicKey = async (userId) => {
     }
     
     // Use provider to read data, no need for signer
-    const contract = await getContract(false);
+    const contract = await getPublicKeysContract(false);
     
     // Try to get the key with proper error handling
     try {
@@ -252,7 +279,7 @@ export const checkUserPublicKeyExists = async (userId) => {
       };
     }
     
-    const contract = await getContract(false);
+    const contract = await getPublicKeysContract(false);
     
     // Make the call with proper error handling
     try {
@@ -308,41 +335,64 @@ export const getCurrentUserAddress = async () => {
   }
 };
 
-// Register public key on blockchain
+// Register public key on blockchain - updated to use both contracts
 export const registerPublicKeyOnChain = async (signer, publicKey, userId) => {
   try {
     // Use the provided userId (DID) or generate a random one as fallback
     const finalUserId = userId || `user_${Math.floor(Math.random() * 1000000)}`;
     
-    // Get contract instance
-    if (!contractAddress) {
-      throw new Error('Contract address not found. Please deploy the contract first.');
+    // Get contract instances
+    if (!contractAddresses.UserPublicKeys || !contractAddresses.UserRegistry) {
+      throw new Error('Contract addresses not found. Please deploy the contracts first.');
     }
     
-    const contract = new ethers.Contract(
-      contractAddress,
+    // Register with the old public keys contract for backward compatibility
+    const publicKeysContract = new ethers.Contract(
+      contractAddresses.UserPublicKeys,
       userPublicKeysABI,
       signer
     );
     
-    console.log(`Registering public key for user ${finalUserId}`);
+    // Register with the new user registry contract
+    const userRegistryContract = new ethers.Contract(
+      contractAddresses.UserRegistry,
+      userRegistryABI, 
+      signer
+    );
     
-    // Call the contract method to set the public key
-    const tx = await contract.setPublicKey(finalUserId, publicKey);
-    console.log('Transaction sent:', tx.hash);
+    console.log(`Registering user ${finalUserId} with public key`);
+    
+    // First check if the user already exists in the registry
+    const userExists = await userRegistryContract.userExists(finalUserId);
+    
+    let registryTx;
+    if (userExists) {
+      console.log('User already exists, updating public key');
+      registryTx = await userRegistryContract.updatePublicKey(finalUserId, publicKey);
+    } else {
+      console.log('Registering new user');
+      registryTx = await userRegistryContract.registerUser(finalUserId, publicKey);
+    }
+    
+    console.log('User registry transaction sent:', registryTx.hash);
+    await registryTx.wait();
+    
+    // For backward compatibility also register in the public keys contract
+    const pkTx = await publicKeysContract.setPublicKey(finalUserId, publicKey);
+    console.log('Public keys transaction sent:', pkTx.hash);
     
     // Wait for transaction to be mined
-    const receipt = await tx.wait();
-    console.log('Transaction confirmed in block:', receipt.blockNumber);
+    const receipt = await pkTx.wait();
+    console.log('Transactions confirmed');
     
     return {
       success: true,
       userId: finalUserId,
-      transactionHash: tx.hash,
+      transactionHash: pkTx.hash,
       blockNumber: receipt.blockNumber
     };
   } catch (error) {
-    console.error('Error registering public key on chain:', error);
+    console.error('Error registering user on chain:', error);
     return {
       success: false,
       error: error.message || 'Unknown error'
@@ -361,33 +411,81 @@ export const createFriendRequest = async (did, publicKey) => {
   return { success: true, from: 'current-user', to: did };
 };
 
+// Generate asymmetric keys for secure messaging
 export const generateAsymmetricKeys = async () => {
-  return { publicKey: 'demo-public-key', privateKey: 'demo-private-key', address: '0xdemo' };
+  try {
+    // Create a random wallet
+    const wallet = ethers.Wallet.createRandom();
+    
+    // Get the wallet's address, private key, and public key
+    const address = wallet.address;
+    const privateKey = wallet.privateKey;
+    const publicKey = wallet.publicKey;
+    
+    console.log('Generated new key pair');
+    
+    return {
+      address,
+      privateKey,
+      publicKey
+    };
+  } catch (error) {
+    console.error('Error generating asymmetric keys:', error);
+    throw error;
+  }
 };
 
+// Store messaging keys in local storage
 export const storeMessagingKeys = (privateKey, publicKey, address) => {
-  console.log('Storing messaging keys:', { privateKey, publicKey, address });
+  try {
+    const messagingKeys = {
+      privateKey,
+      publicKey,
+      address,
+      createdAt: new Date().toISOString()
+    };
+    
+    // Encrypt private key with a derived key or password in a real app
+    localStorage.setItem('liberaChainMessagingKeys', JSON.stringify(messagingKeys));
+    return true;
+  } catch (error) {
+    console.error('Error storing messaging keys:', error);
+    return false;
+  }
 };
 
+// Retrieve messaging keys from local storage
 export const retrieveMessagingKeys = () => {
-  return { publicKey: 'demo-public-key', privateKey: 'demo-private-key', address: '0xdemo' };
+  try {
+    const keysStr = localStorage.getItem('liberaChainMessagingKeys');
+    if (!keysStr) return null;
+    
+    return JSON.parse(keysStr);
+  } catch (error) {
+    console.error('Error retrieving messaging keys:', error);
+    return null;
+  }
 };
 
+// Store user profile in IPFS
 export const storeUserProfileInIPFS = async (profile) => {
   console.log('Storing user profile in IPFS:', profile);
   return { success: true };
 };
 
+// Get user profile from IPFS
 export const getUserProfileFromIPFS = async (did) => {
   console.log('Getting user profile from IPFS for DID:', did);
   return null;
 };
 
+// Set username for DID
 export const setUserNameForDID = async (did, username) => {
   console.log('Setting username for DID:', did, username);
   return { success: true };
 };
 
+// Get blockchain status
 export const getBlockchainStatus = async () => {
   try {
     const { provider } = await getProviderAndSigner();
@@ -475,6 +573,54 @@ export const checkWalletNetwork = async () => {
       success: false, 
       rightNetwork: false, 
       error: error.message 
+    };
+  }
+};
+
+// Verify a user exists on the blockchain
+export const verifyUserOnBlockchain = async (did) => {
+  try {
+    console.log('[DEBUG] Verifying user exists on blockchain:', did);
+    
+    // Ensure did is a valid string
+    if (!did || typeof did !== 'string') {
+      console.error('[DEBUG] Invalid did:', did);
+      return {
+        success: false,
+        error: 'Invalid DID'
+      };
+    }
+    
+    // Use provider to read data, no need for signer
+    const contract = await getContract('UserRegistry', false);
+    
+    // Check if the user exists
+    const exists = await contract.userExists(did);
+    console.log('[DEBUG] User exists check:', exists);
+    
+    if (!exists) {
+      return {
+        success: false,
+        verified: false,
+        error: 'User not found on blockchain'
+      };
+    }
+    
+    // Get user registration data
+    const userData = await contract.getUser(did);
+    
+    return {
+      success: true,
+      verified: true,
+      publicKey: userData[1],
+      registrationTime: new Date(userData[2].toNumber() * 1000).toISOString()
+    };
+  } catch (error) {
+    console.error('[DEBUG] Error verifying user on blockchain:', error);
+    return {
+      success: false,
+      verified: false,
+      error: error.message || 'Unknown error'
     };
   }
 };

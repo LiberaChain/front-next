@@ -1,20 +1,24 @@
 const { ethers } = require("hardhat");
 
 async function main() {
-  console.log("Starting deployment of UserPublicKeys contract...");
+  console.log("Starting deployment of contracts...");
   
-  // Get the contract factory
+  // Get the contract factories
   const UserPublicKeys = await ethers.getContractFactory("UserPublicKeys");
+  const UserRegistry = await ethers.getContractFactory("UserRegistry");
   
-  // Deploy the contract
+  // Deploy contracts
+  console.log("Deploying UserPublicKeys contract...");
   const userPublicKeys = await UserPublicKeys.deploy();
-  
-  // Wait for deployment to finish
   await userPublicKeys.deployed();
-  
   console.log("UserPublicKeys deployed to:", userPublicKeys.address);
   
-  // Save contract address and ABI for frontend usage
+  console.log("Deploying UserRegistry contract...");
+  const userRegistry = await UserRegistry.deploy();
+  await userRegistry.deployed();
+  console.log("UserRegistry deployed to:", userRegistry.address);
+  
+  // Save contract addresses and ABIs for frontend usage
   const fs = require("fs");
   const contractsDir = __dirname + "/../artifacts/contracts";
   
@@ -24,16 +28,19 @@ async function main() {
   
   fs.writeFileSync(
     contractsDir + "/contract-address.json",
-    JSON.stringify({ UserPublicKeys: userPublicKeys.address }, undefined, 2)
+    JSON.stringify({ 
+      UserPublicKeys: userPublicKeys.address,
+      UserRegistry: userRegistry.address 
+    }, undefined, 2)
   );
   
-  console.log("Contract address saved to blockchain/artifacts/contracts/contract-address.json");
+  console.log("Contract addresses saved to blockchain/artifacts/contracts/contract-address.json");
 }
 
 // Execute deploy function and handle errors
 main()
   .then(() => process.exit(0))
   .catch((error) => {
-    console.error("Error deploying contract:", error);
+    console.error("Error deploying contracts:", error);
     process.exit(1);
   });
