@@ -12,10 +12,7 @@ This document provides an overview of the key features and functionality of our 
 ## Authentication
 
 ### Login
-<video width="800" controls>
-  <source src="demo_vids/login.mp4" type="video/mp4">
-  Your browser does not support the video tag.
-</video>
+[![Login Demo](demo_vids/login_thumbnail.png)](demo_vids/login.mp4)
 
 - **Features**:
   - Secure login using Web3 authentication
@@ -24,10 +21,7 @@ This document provides an overview of the key features and functionality of our 
   - Session management
 
 ### Registration
-<video width="800" controls>
-  <source src="demo_vids/register.mp4" type="video/mp4">
-  Your browser does not support the video tag.
-</video>
+[![Registration Demo](demo_vids/register_thumbnail.png)](demo_vids/register.mp4)
 
 - **Features**:
   - New user registration with DID creation
@@ -38,10 +32,7 @@ This document provides an overview of the key features and functionality of our 
 ## IPFS Integration
 
 ### Post Creation and Storage
-<video width="800" controls>
-  <source src="demo_vids/ipfs_post.mp4" type="video/mp4">
-  Your browser does not support the video tag.
-</video>
+[![IPFS Post Demo](demo_vids/ipfs_post_thumbnail.png)](demo_vids/ipfs_post.mp4)
 
 - **Features**:
   - Decentralized content storage
@@ -52,10 +43,7 @@ This document provides an overview of the key features and functionality of our 
 ## Blockchain Integration
 
 ### On-Chain Post Storage
-<video width="800" controls>
-  <source src="demo_vids/blockchain_post.mp4" type="video/mp4">
-  Your browser does not support the video tag.
-</video>
+[![Blockchain Post Demo](demo_vids/blockchain_post_thumbnail.png)](demo_vids/blockchain_post.mp4)
 
 - **Features**:
   - Smart contract interaction
@@ -96,21 +84,3 @@ This document provides an overview of the key features and functionality of our 
 2. Install dependencies:
    ```bash
    npm install
-   ```
-3. Set up environment variables (see `.env.example`)
-4. Run the development server:
-   ```bash
-   npm run dev
-   ```
-
-## Environment Setup
-
-Required environment variables:
-- `NEXT_PUBLIC_WEB3AUTH_CLIENT_ID`: Web3Auth client ID
-- `NEXT_PUBLIC_WEB3AUTH_NETWORK`: Web3Auth network
-- `NEXT_PUBLIC_INFURA_IPFS_PROJECT_ID`: Infura IPFS project ID
-- `NEXT_PUBLIC_INFURA_IPFS_PROJECT_SECRET`: Infura IPFS project secret
-- `NEXT_PUBLIC_WEB3_STORAGE_TOKEN`: Web3.Storage API token
-- `NEXT_PUBLIC_ALCHEMY_API_KEY`: Alchemy API key
-- `NEXT_PUBLIC_CONTRACT_ADDRESS`: Smart contract address
-
