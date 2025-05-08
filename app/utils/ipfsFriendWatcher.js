@@ -97,6 +97,18 @@ const checkForNewFriendRequests = async (userDid) => {
   }
 };
 
+// Reset processed requests tracking to force fresh check
+export const resetProcessedRequests = () => {
+  console.log('Resetting processed friend requests tracking...');
+  if (typeof window !== 'undefined') {
+    // Clear all processed request tracking from localStorage
+    localStorage.removeItem('liberaChainProcessedRequests');
+    localStorage.removeItem('liberaChainProcessedFallbackRequests');
+    localStorage.removeItem('liberaChainProcessedDirectRequests');
+    console.log('Friend request tracking has been reset');
+  }
+};
+
 // Dispatch custom event for friend request notifications
 const dispatchFriendRequestEvent = (eventType, data) => {
   if (typeof window !== 'undefined') {

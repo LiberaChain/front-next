@@ -984,3 +984,74 @@ export const setUserNameForDID = async (did, username) => {
     };
   }
 };
+
+// Get all friend requests for the current user (both sent and received)
+export const getAllFriendRequests = async () => {
+  try {
+    // Get current user's DID
+    const profileData = JSON.parse(localStorage.getItem('liberaChainIdentity') || '{}');
+    
+    if (!profileData?.did) {
+      throw new Error('User profile not found');
+    }
+
+    if (!hasIpfsCredentials()) {
+      throw new Error('IPFS credentials required to check friend requests');
+    }
+
+    // List all files in IPFS storage
+    const response = await fetch('/api/storage');
+    if (!response.ok) {
+      throw new Error('Failed to list IPFS files');
+    }
+
+    const listData = await response.json();
+    if (!listData.success || !listData.files) {
+      throw new Error('Invalid response from IPFS storage');
+    }
+
+    // Find all friend request files
+    const requestFiles = listData.files.filter(file => file.match(/friend-request.*\.json/));
+    console.log(`Found ${requestFiles.length} potential friend request files`);
+
+    const received = [];
+    const sent = [];
+
+    // Process each request file
+    for (const filename of requestFiles) {
+      try {
+        const content = await getFile(filename);
+        if (!content) continue;
+
+        const requestData = JSON.parse(content);
+        
+        // Sort into received and sent requests
+        if (requestData.to === profileData.did) {
+          received.push(requestData);
+        } else if (requestData.from === profileData.did) {
+          sent.push(requestData);
+        }
+      } catch (err) {
+        console.error('Error processing friend request file:', filename, err);
+      }
+    }
+
+    // Sort requests by timestamp, newest first
+    received.sort((a, b) => b.timestamp - a.timestamp);
+    sent.sort((a, b) => b.timestamp - a.timestamp);
+
+    return {
+      success: true,
+      received,
+      sent
+    };
+  } catch (error) {
+    console.error('Error getting friend requests:', error);
+    return {
+      success: false,
+      error: error.message,
+      received: [],
+      sent: []
+    };
+  }
+};

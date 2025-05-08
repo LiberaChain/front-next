@@ -260,7 +260,7 @@ const checkFileExists = async (filename) => {
 };
 
 // IPFS Service for interacting with IPFS/S3 storage
-import { getS3Gateway, hasS3Credentials } from './storage/s3Config';
+import { getS3Gateway, hasS3Credentials } from './s3Config';
 
 // Store content on IPFS/S3
 export const uploadPostToIPFS = async (postData) => {

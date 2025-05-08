@@ -15,8 +15,8 @@ const COOKIE_OPTIONS = {
 };
 
 // Parse our secure storage cookie
-const getSecureStorage = () => {
-  const cookieStore = cookies();
+const getSecureStorage = async () => {
+  const cookieStore = await cookies();
   const storageCookie = cookieStore.get('secureAppStorage');
   
   if (!storageCookie) {
@@ -31,95 +31,75 @@ const getSecureStorage = () => {
   }
 };
 
-// Set data to secure storage
-export async function POST(request) {
-  try {
-    const body = await request.json();
-    const { action, key, data } = body;
-    
-    if (!key) {
-      return NextResponse.json({ success: false, error: 'Key is required' }, { status: 400 });
-    }
-    
-    const secureStorage = getSecureStorage();
-    
-    if (action === 'set') {
-      // Store data
-      secureStorage[key] = data;
-    } else if (action === 'remove') {
-      // Remove data
-      delete secureStorage[key];
-    } else {
-      return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });
-    }
-    
-    // Update the cookie with new storage data
-    cookies().set('secureAppStorage', JSON.stringify(secureStorage), COOKIE_OPTIONS);
-    
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Error in storage API:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
-  }
-}
-
-// Get data from secure storage
+// Get data from secure storage or IPFS
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action');
-    const key = searchParams.get('key');
     
-    if (action !== 'get') {
-      return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });
+    if (action === 'get') {
+      const key = searchParams.get('key');
+      if (!key) {
+        return NextResponse.json({ success: false, error: 'Key is required' }, { status: 400 });
+      }
+      const secureStorage = await getSecureStorage();
+      const data = secureStorage[key];
+      return NextResponse.json({ success: true, data });
+    } 
+    
+    if (action === 'ipfs') {
+      const cid = searchParams.get('cid');
+      if (!cid) {
+        return NextResponse.json({ error: 'CID parameter is required' }, { status: 400 });
+      }
+      const content = await getFromIpfs(cid);
+      return NextResponse.json({ success: true, data: content });
     }
-    
-    if (!key) {
-      return NextResponse.json({ success: false, error: 'Key is required' }, { status: 400 });
-    }
-    
-    const secureStorage = getSecureStorage();
-    const data = secureStorage[key];
-    
-    return NextResponse.json({ success: true, data });
+
+    return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });
   } catch (error) {
     console.error('Error in storage API:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
 
-// GET handler for files
-export async function GET(request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const cid = searchParams.get('cid');
-    
-    if (!cid) {
-      return NextResponse.json({ error: 'CID parameter is required' }, { status: 400 });
-    }
-
-    const content = await getFromIpfs(cid);
-    return NextResponse.json(content);
-  } catch (error) {
-    console.error('Error retrieving from IPFS:', error);
-    return NextResponse.json({ error: 'Failed to retrieve content' }, { status: 500 });
-  }
-}
-
-// POST handler for uploading files
+// Handle secure storage and IPFS uploads
 export async function POST(request) {
   try {
-    const data = await request.json();
-    const { content } = data;
+    const body = await request.json();
+    const { action, key, data, content } = body;
     
-    if (!content) {
-      return NextResponse.json({ error: 'Content is required' }, { status: 400 });
+    if (action === 'set' || action === 'remove') {
+      if (!key) {
+        return NextResponse.json({ success: false, error: 'Key is required' }, { status: 400 });
+      }
+      
+      const secureStorage = await getSecureStorage();
+      
+      if (action === 'set') {
+        // Store data
+        secureStorage[key] = data;
+      } else {
+        // Remove data
+        delete secureStorage[key];
+      }
+      
+      // Update the cookie with new storage data
+      cookies().set('secureAppStorage', JSON.stringify(secureStorage), COOKIE_OPTIONS);
+      return NextResponse.json({ success: true });
+    }
+    
+    if (action === 'ipfs') {
+      if (!content) {
+        return NextResponse.json({ error: 'Content is required' }, { status: 400 });
+      }
+      const cid = await uploadToIpfs(content);
+      return NextResponse.json({ success: true, cid });
     }
 
-    const cid = await uploadToIpfs(content);
-    return NextResponse.json({ success: true, cid });
+    return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });
   } catch (error) {
-    console.error('Error uploading to IPFS:', error);
-    return NextResponse.json({ error: 'Failed to upload content' }, { status: 500 });
+    console.error('Error in storage API:', error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

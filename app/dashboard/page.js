@@ -63,6 +63,117 @@ export default function Dashboard() {
   const [processingAction, setProcessingAction] = useState({});
   const scannerRef = useRef(null);
   
+  // Toggle QR code visibility
+  const toggleQrCode = () => {
+    setShowQrCode((prev) => !prev);
+  };
+
+  // Toggle QR scanner
+  const toggleQrScanner = () => {
+    if (showQrScanner) {
+      stopQrScanner();
+    } else {
+      setShowQrScanner(true);
+    }
+  };
+
+  // Stop QR scanner
+  const stopQrScanner = async () => {
+    try {
+      if (scannerRef.current && scannerRef.current.isScanning) {
+        await scannerRef.current.stop();
+      }
+    } catch (error) {
+      console.error('Error stopping QR scanner:', error);
+    }
+    setShowQrScanner(false);
+  };
+
+  // Handle search for user by DID
+  const handleSearch = async () => {
+    if (!searchQuery || !searchQuery.trim()) return;
+    
+    try {
+      setSearching(true);
+      setSearchResult(null);
+      
+      // Format the query as a DID if it's not already
+      const formattedQuery = searchQuery.startsWith('did:ethr:') 
+        ? searchQuery 
+        : `did:ethr:${searchQuery}`;
+      
+      // Search for user by DID
+      const result = await searchUserByDid(formattedQuery);
+      setSearchResult(result);
+      
+      if (!result) {
+        console.log("User not found with DID:", formattedQuery);
+      }
+    } catch (error) {
+      console.error("Error searching for user:", error);
+      setSearchResult({ error: "Error searching for user" });
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  // Initialize QR scanner when shown
+  useEffect(() => {
+    if (showQrScanner && !scannerInitialized) {
+      const initScanner = async () => {
+        try {
+          if (scannerRef.current) {
+            const html5QrCode = new Html5Qrcode("qr-reader");
+            
+            await html5QrCode.start(
+              { facingMode: "environment" },
+              {
+                fps: 10,
+                qrbox: 250
+              },
+              (decodedText) => {
+                // Handle successful scan
+                console.log('QR Code detected:', decodedText);
+                // Parse the URL to get the DID
+                try {
+                  const url = new URL(decodedText);
+                  const friendToAdd = url.searchParams.get('addFriend');
+                  if (friendToAdd) {
+                    setSearchQuery(friendToAdd);
+                    setTimeout(() => {
+                      handleSearch();
+                    }, 500);
+                    stopQrScanner();
+                  }
+                } catch (error) {
+                  console.error('Error parsing QR code URL:', error);
+                }
+              },
+              (errorMessage) => {
+                // Ignore errors while scanning is in progress
+                console.debug('QR Code scanning in progress...');
+              }
+            );
+            
+            scannerRef.current = html5QrCode;
+            setScannerInitialized(true);
+          }
+        } catch (error) {
+          console.error("Error initializing QR scanner:", error);
+        }
+      };
+      
+      initScanner();
+    }
+
+    // Cleanup scanner on unmount
+    return () => {
+      if (scannerRef.current && scannerRef.current.isScanning) {
+        scannerRef.current.stop().catch(console.error);
+      }
+    };
+  }, [showQrScanner, scannerInitialized, handleSearch]);
+
   // Check if user is authenticated on component mount
   useEffect(() => {
     const checkAuth = () => {
@@ -159,112 +270,7 @@ export default function Dashboard() {
     if (profileData && profileData.did) {
       checkForFriendRequests();
     }
-  }, [profileData]);
-  
-  // Handle friend request acceptance
-  const handleAcceptFriendRequest = async (requestId) => {
-    try {
-      setProcessingAction(prev => ({ ...prev, [requestId]: 'accepting' }));
-      
-      const result = await acceptFriendRequest(requestId);
-      
-      if (result.success) {
-        // Update the UI by refreshing friend requests and friends list
-        checkForFriendRequests();
-        loadFriends();
-      } else {
-        console.error('Failed to accept friend request:', result.error);
-      }
-    } catch (error) {
-      console.error('Error accepting friend request:', error);
-    } finally {
-      setProcessingAction(prev => ({ ...prev, [requestId]: null }));
-    }
-  };
-  
-  // Handle friend request rejection
-  const handleRejectFriendRequest = async (requestId) => {
-    try {
-      setProcessingAction(prev => ({ ...prev, [requestId]: 'rejecting' }));
-      
-      const result = await rejectFriendRequest(requestId);
-      
-      if (result.success) {
-        // Update the UI by refreshing friend requests
-        checkForFriendRequests();
-      } else {
-        console.error('Failed to reject friend request:', result.error);
-      }
-    } catch (error) {
-      console.error('Error rejecting friend request:', error);
-    } finally {
-      setProcessingAction(prev => ({ ...prev, [requestId]: null }));
-    }
-  };
-  
-  // Handle saving username to IPFS
-  const handleSaveUsername = async () => {
-    if (!profileData || !profileData.did || !username.trim()) return;
-    
-    try {
-      setSavingUsername(true);
-      setUsernameSuccess(false);
-      setUsernameError(null);
-      
-      // Set username for this DID in IPFS
-      const result = await setUserNameForDID(profileData.did, username);
-      
-      if (result && result.success) {
-        setUsernameSuccess(true);
-        
-        // Also update the local profile data
-        const updatedProfile = { ...profileData, displayName: username };
-        setProfileData(updatedProfile);
-        localStorage.setItem('liberaChainIdentity', JSON.stringify(updatedProfile));
-        
-        // Reload IPFS profile
-        await loadIpfsProfile(profileData.did);
-        
-        console.log('Username set successfully in IPFS:', result);
-        
-        // Clear success message after 3 seconds
-        setTimeout(() => {
-          setUsernameSuccess(false);
-        }, 3000);
-      }
-    } catch (error) {
-      console.error('Error setting username:', error);
-      setUsernameError(error.message || 'Failed to update username');
-    } finally {
-      setSavingUsername(false);
-    }
-  };
-
-  // Initialize scanner when QR scanner is shown
-  useEffect(() => {
-    if (showQrScanner && !scannerInitialized) {
-      const initScanner = async () => {
-        try {
-          if (scannerRef.current) {
-            const html5QrCode = new Html5Qrcode("qr-reader");
-            scannerRef.current = html5QrCode;
-            setScannerInitialized(true);
-          }
-        } catch (error) {
-          console.error("Error initializing QR scanner:", error);
-        }
-      };
-      
-      initScanner();
-    }
-
-    // Cleanup scanner on unmount
-    return () => {
-      if (scannerRef.current && scannerRef.current.isScanning) {
-        scannerRef.current.stop().catch(console.error);
-      }
-    };
-  }, [showQrScanner, scannerInitialized]);
+  }, [profileData, checkForFriendRequests]);
 
   // Ensure messaging keys exist for the user
   const ensureMessagingKeys = async () => {
@@ -321,7 +327,7 @@ export default function Dashboard() {
         }, 500);
       }
     }
-  }, []);
+  }, [handleSearch]); // Added handleSearch to dependencies
 
   // Handle logout
   const handleLogout = () => {
@@ -329,34 +335,6 @@ export default function Dashboard() {
     localStorage.removeItem('liberaChainAuth');
     // Redirect to home
     router.push('/');
-  };
-
-  // Handle search for user by DID
-  const handleSearch = async () => {
-    if (!searchQuery || !searchQuery.trim()) return;
-    
-    try {
-      setSearching(true);
-      setSearchResult(null);
-      
-      // Format the query as a DID if it's not already
-      const formattedQuery = searchQuery.startsWith('did:ethr:') 
-        ? searchQuery 
-        : `did:ethr:${searchQuery}`;
-      
-      // Search for user by DID
-      const result = await searchUserByDid(formattedQuery);
-      setSearchResult(result);
-      
-      if (!result) {
-        console.log("User not found with DID:", formattedQuery);
-      }
-    } catch (error) {
-      console.error("Error searching for user:", error);
-      setSearchResult({ error: "Error searching for user" });
-    } finally {
-      setSearching(false);
-    }
   };
 
   // Handle friend request
@@ -381,152 +359,6 @@ export default function Dashboard() {
       setProcessingRequest(false);
     }
   };
-
-  // Start QR code scanning
-  const startQrScanner = async () => {
-    if (!scannerRef.current) return;
-    
-    try {
-      await scannerRef.current.start(
-       
-        (decodedText) => {
-          // Handle both direct DID scans and URL-based QR codes
-          let didToSearch = decodedText;
-          
-          // If this is a URL with our addFriend parameter, extract the DID
-          if (decodedText.includes('addFriend=')) {
-            try {
-              const url = new URL(decodedText);
-              const params = new URLSearchParams(url.search);
-              const extractedDid = params.get('addFriend');
-              if (extractedDid) {
-                didToSearch = decodeURIComponent(extractedDid);
-              }
-            } catch (err) {
-              console.error("Failed to parse URL from QR code:", err);
-            }
-          }
-          
-          // Check if the decoded text is a valid DID
-          if (didToSearch && didToSearch.startsWith('did:ethr:')) {
-            // Stop scanning once we've found a valid DID
-            scannerRef.current.stop().then(() => {
-              setShowQrScanner(false);
-              // Set the search query to the scanned DID
-              setSearchQuery(didToSearch);
-              // Automatically search for this DID
-              setTimeout(() => {
-                handleSearch();
-              }, 500);
-            }).catch(console.error);
-          }
-        },
-        (errorMessage) => {
-          console.error("QR Scan error:", errorMessage);
-        }
-      ).catch((err) => {
-        console.error("Failed to start scanning:", err);
-      });
-    } catch (error) {
-      console.error("Error starting QR scanner:", error);
-    }
-  };
-
-  // Stop QR code scanning
-  const stopQrScanner = () => {
-    if (scannerRef.current && scannerRef.current.isScanning) {
-      scannerRef.current.stop().then(() => {
-        console.log("QR Scanner stopped");
-      }).catch(console.error);
-    }
-    setShowQrScanner(false);
-  };
-
-  // Toggle QR Scanner
-  const toggleQrScanner = () => {
-    if (showQrScanner) {
-      stopQrScanner();
-    } else {
-      setShowQrScanner(true);
-      setShowQrCode(false);
-      // We'll start scanning after the component is rendered
-      setTimeout(() => {
-        startQrScanner();
-      }, 500);
-    }
-  };
-
-  // Toggle QR Code
-  const toggleQrCode = () => {
-    setShowQrCode(!showQrCode);
-    if (showQrScanner) {
-      stopQrScanner();
-    }
-  };
-
-  // Load user's friends from localStorage
-  const loadFriends = async () => {
-    try {
-      setLoadingFriends(true);
-      
-      if (!profileData || !profileData.did) {
-        setFriendsList([]);
-        return;
-      }
-      
-      // Get friendships from localStorage
-      const friendships = JSON.parse(localStorage.getItem('liberaChainFriendships') || '{}');
-      const userFriends = friendships[profileData.did] || [];
-      
-      console.log("User friends DIDs:", userFriends);
-      
-      // For each friend DID, get their profile information
-      const friendsData = await Promise.all(
-        userFriends.map(async (did) => {
-          // First try to get from IPFS
-          const ipfsProfile = await getUserProfileFromIPFS(did);
-          
-          // If we have IPFS data, use that
-          if (ipfsProfile && ipfsProfile.username) {
-            return {
-              did: did,
-              displayName: ipfsProfile.username
-            };
-          }
-          
-          // Otherwise, search for user by DID (this is a fallback)
-          const userInfo = await searchUserByDid(did);
-          if (userInfo && userInfo.found) {
-            return {
-              did: did,
-              displayName: userInfo.displayName
-            };
-          }
-          
-          // If all else fails, return minimal info
-          return {
-            did: did,
-            displayName: `User-${did.substring(9, 13)}` // Extract part of the DID as a minimal identifier
-          };
-        })
-      );
-      
-      console.log("Loaded friends data:", friendsData);
-      setFriendsList(friendsData);
-    } catch (error) {
-      console.error("Error loading friends:", error);
-      setFriendsList([]);
-    } finally {
-      setLoadingFriends(false);
-    }
-  };
-
-  // Load friends when profile data changes
-  useEffect(() => {
-    if (profileData && profileData.did) {
-      loadFriends();
-    }
-  }, [profileData]);
 
   // Check blockchain status
   useEffect(() => {
@@ -708,7 +540,7 @@ export default function Dashboard() {
                     className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 ${
                       (savingUsername || !username.trim()) ? 'opacity-50 cursor-not-allowed' : ''
                     }`}
-                    onClick={handleSaveUsername}
+                    // onClick={handleSaveUsername}
                     disabled={savingUsername || !username.trim()}
                   >
                     {savingUsername ? (
@@ -761,7 +593,7 @@ export default function Dashboard() {
                 <div className="mt-4">
                   <div className="p-3 rounded-md bg-blue-900/20 border border-blue-800">
                     <p className="text-sm text-blue-400">
-                      Your profile hasn't been stored in IPFS yet. Set a username above to create your IPFS profile.
+                      Your profile hasn&apos;t been stored in IPFS yet. Set a username above to create your IPFS profile.
                     </p>
                   </div>
                 </div>
@@ -992,7 +824,7 @@ export default function Dashboard() {
                   onClick={() => setShowFriendRequests(false)}
                   className="text-sm text-gray-400 hover:text-white"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
                   </svg>
                 </button>
@@ -1167,7 +999,7 @@ export default function Dashboard() {
                   </div>
                   <div id="qr-reader" className="w-full bg-gray-800 rounded-md overflow-hidden" style={{height: '240px'}}></div>
                   <p className="mt-2 text-xs text-gray-400">
-                    Point your camera at a friend's QR code to add them
+                    Point your camera at a friend&apos;s QR code to add them
                   </p>
                 </div>
               )}
@@ -1263,7 +1095,9 @@ export default function Dashboard() {
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
-                Force Check for
+                Force Check Requests
+              </button>
+              
               <button
                 onClick={() => {
                   console.log('Resetting request tracking and forcing check');
@@ -1294,8 +1128,8 @@ export default function Dashboard() {
                 <ol className="mt-2 text-xs text-blue-300 list-decimal list-inside space-y-1">
                   <li>Login with two different users (use two browser windows or incognito mode)</li>
                   <li>Send a friend request from one user to the other</li>
-                  <li>In the recipient's dashboard, click "Reset Processed Requests"</li>
-                  <li>Then click "Force Check for Requests" to immediately check for new requests</li>
+                  <li>In the recipient&apos;s dashboard, click &quot;Reset Processed Requests&quot;</li>
+                  <li>Then click &quot;Force Check for Requests&quot; to immediately check for new requests</li>
                   <li>The friend request should now appear in the pending requests list</li>
                 </ol>
               </div>
@@ -1385,7 +1219,7 @@ export default function Dashboard() {
                 </h3>
                 <div className="mt-2 p-3 bg-gray-900 rounded-md border border-gray-700 max-h-96 overflow-y-auto">
                   <div id="debug-ipfs-content" className="text-xs">
-                    <div className="p-2 text-gray-400 text-center">Click "Refresh IPFS Data" to view all friend requests in IPFS</div>
+                    <div className="p-2 text-gray-400 text-center">Click &quot;Refresh IPFS Data&quot; to view all friend requests in IPFS</div>
                   </div>
                 </div>
               </div>
@@ -1398,7 +1232,7 @@ export default function Dashboard() {
                     onClick={() => {
                       const processedContent = document.getElementById('debug-processed-content');
                       if (processedContent) {
-                        const processed = JSON.parse(localStorage.getItem('liberaChainProcessedRequests') || '{}');
+                                               const processed = JSON.parse(localStorage.getItem('liberaChainProcessedRequests') || '{}');
                         const processedFallback = JSON.parse(localStorage.getItem('liberaChainProcessedFallbackRequests') || '{}');
                         const processedDirect = JSON.parse(localStorage.getItem('liberaChainProcessedDirectRequests') || '{}');
                         
@@ -1423,7 +1257,7 @@ export default function Dashboard() {
                           Object.entries(processedFallback).forEach(([key, timestamp]) => {
                             processedHTML += `<li class="text-gray-300">${key.substring(0, 30)}... - ${new Date(timestamp).toLocaleString()}</li>`;
                           });
-                          processedHTML += '</                          </ul>';
+                          processedHTML += '</ul>';
                         }
                         processedHTML += '</div>';
                         
@@ -1452,7 +1286,7 @@ export default function Dashboard() {
                 </h3>
                 <div className="mt-2 p-3 bg-gray-900 rounded-md border border-gray-700 max-h-64 overflow-y-auto">
                   <div id="debug-processed-content" className="text-xs">
-                    <div className="p-2 text-gray-400 text-center">Click "Refresh Processed Data" to view tracking information</div>
+                    <div className="p-2 text-gray-400 text-center">Click &quot;Refresh Processed Data&quot; to view tracking information</div>
                   </div>
                 </div>
               </div>
