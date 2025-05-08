@@ -7,7 +7,6 @@ import { isLoggedIn } from "./utils/authService";
 import "./chat/chat.css";
 
 export default function Home() {
-  const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
@@ -20,30 +19,25 @@ export default function Home() {
 
       // All checks passed, redirect to dashboard
       router.push("/dashboard");
-      setIsLoading(false);
     }
 
     checkAuth();
   }, [router]);
 
-  if (isLoading) {
-    return (
-      <div className="loading-container">
-        <div className="loading-logo">
-          <Image
-            src="/logo.svg"
-            alt="LiberaChain"
-            width={80}
-            height={80}
-            priority
-          />
-        </div>
-        <h1 className="mt-6 text-2xl font-semibold text-white page-transition">
-          LiberaChain - The trully decentralized social network
-        </h1>
+  return (
+    <div className="loading-container">
+      <div className="loading-logo">
+        <Image
+          src="/logo.svg"
+          alt="LiberaChain"
+          width={80}
+          height={80}
+          priority
+        />
       </div>
-    );
-  }
-
-  return null;
+      <h1 className="mt-6 text-2xl font-semibold text-white page-transition">
+        LiberaChain - The trully decentralized social network
+      </h1>
+    </div>
+  );
 }
