@@ -391,6 +391,50 @@ export const canViewPost = (viewerDid, postMetadata) => {
 };
 
 /**
+ * Store metadata for a post
+ * @param {string} cid - IPFS Content ID (CID) or postId
+ * @param {Object} metadata - Post metadata
+ * @returns {boolean} Whether the operation was successful
+ */
+export const storePostMetadata = (cid, metadata) => {
+  try {
+    if (!cid || !metadata) {
+      console.error('Missing required parameters for storing post metadata');
+      return false;
+    }
+
+    // Get existing metadata map from storage
+    const metadataMap = JSON.parse(localStorage.getItem('liberaChainPostMetadata') || '{}');
+    
+    // Add new metadata
+    metadataMap[cid] = {
+      ...metadata,
+      timestamp: Date.now()
+    };
+    
+    // Save back to storage
+    localStorage.setItem('liberaChainPostMetadata', JSON.stringify(metadataMap));
+    
+    // Also update user's posts registry if this is their post
+    if (metadata.authorDid) {
+      const userPosts = JSON.parse(localStorage.getItem('liberaChainUserPosts') || '{}');
+      if (!userPosts[metadata.authorDid]) {
+        userPosts[metadata.authorDid] = [];
+      }
+      if (!userPosts[metadata.authorDid].includes(cid)) {
+        userPosts[metadata.authorDid].push(cid);
+        localStorage.setItem('liberaChainUserPosts', JSON.stringify(userPosts));
+      }
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error storing post metadata:', error);
+    return false;
+  }
+};
+
+/**
  * Extract basic metadata from external URLs (social media links)
  * @param {string} url - URL to extract metadata from
  * @returns {Promise<Object>} Object containing extracted metadata
