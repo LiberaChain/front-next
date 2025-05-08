@@ -1,5 +1,9 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import {
+  uploadToIpfs,
+  getFromIpfs,
+} from '../../utils/ipfs-http';
 
 // Secure cookie options
 const COOKIE_OPTIONS = {
@@ -81,5 +85,41 @@ export async function GET(request) {
   } catch (error) {
     console.error('Error in storage API:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
+// GET handler for files
+export async function GET(request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const cid = searchParams.get('cid');
+    
+    if (!cid) {
+      return NextResponse.json({ error: 'CID parameter is required' }, { status: 400 });
+    }
+
+    const content = await getFromIpfs(cid);
+    return NextResponse.json(content);
+  } catch (error) {
+    console.error('Error retrieving from IPFS:', error);
+    return NextResponse.json({ error: 'Failed to retrieve content' }, { status: 500 });
+  }
+}
+
+// POST handler for uploading files
+export async function POST(request) {
+  try {
+    const data = await request.json();
+    const { content } = data;
+    
+    if (!content) {
+      return NextResponse.json({ error: 'Content is required' }, { status: 400 });
+    }
+
+    const cid = await uploadToIpfs(content);
+    return NextResponse.json({ success: true, cid });
+  } catch (error) {
+    console.error('Error uploading to IPFS:', error);
+    return NextResponse.json({ error: 'Failed to upload content' }, { status: 500 });
   }
 }

@@ -1,10 +1,9 @@
 // Posts Service for IPFS-based social media functionality using S3 storage
+import axios from 'axios';
 import {
-  uploadFile, 
-  getFile, 
-  hasS3Credentials, 
-  getS3Gateway
-} from './ipfs-crud.js';
+  uploadToIpfs,
+  getFromIpfs,
+} from './ipfs-http';
 import {
   getBlockchainPost,
   getUserBlockchainPosts,
@@ -12,36 +11,67 @@ import {
   checkBalanceForPosting,
   getBlockchainPostFee
 } from './blockchainPostsService';
+import {
+  publishToIpns,
+  resolveIpns,
+  getLatestContent,
+  updateContent
+} from './ipns-service';
+import {
+  pinContent,
+  unpinContent
+} from './ipfs-pin-service';
 
-// Check if IPFS credentials are available
-const hasIpfsCredentials = () => {
-  return hasS3Credentials();
+// Create demo mock data for testing
+export const initializeMockPosts = () => {
+  // ...existing mock data initialization code...
 };
 
 /**
- * Upload a post to IPFS
+ * Upload a post to IPFS and publish to IPNS
  * @param {Object} postData - Post data to upload
  * @returns {Promise<string|null>} IPFS CID (Content ID) or null if upload failed
  */
 export const uploadPostToIPFS = async (postData) => {
-  if (!hasIpfsCredentials()) {
-    throw new Error('IPFS credentials not configured');
-  }
+  try {
+    // Convert post data to string
+    const postDataString = JSON.stringify(postData);
+    
+    // Upload to IPFS
+    const cid = await uploadToIpfs(postDataString);
+    
+    if (!cid) {
+      throw new Error('Post upload failed');
+    }
+    
+    console.log('Post uploaded to IPFS with CID:', cid);
 
-  // Convert post data to string
-  const postDataString = JSON.stringify(postData);
-  
-  // Generate a unique filename for this post
-  const filename = `post-${Date.now()}.json`;
-  
-  // Use S3 uploadFile function from ipfs-crud.js
-  const fileLocation = await uploadFile(filename, postDataString);
-  
-  if (!fileLocation) {
-    throw new Error('Post upload failed');
-  }
+    // Try to pin the content locally
+    await pinContent(cid, {
+      type: 'post',
+      authorDid: postData.authorDid,
+      timestamp: postData.timestamp
+    });
 
-  return filename;
+    // Publish to IPNS if we have a DID
+    if (postData.authorDid) {
+      await publishToIpns(postData.authorDid, cid, 'posts');
+    }
+    
+    // Store a local cache copy for faster access
+    try {
+      const postsMap = JSON.parse(localStorage.getItem('liberaChainIpfsPosts') || '{}');
+      postsMap[cid] = postData;
+      localStorage.setItem('liberaChainIpfsPosts', JSON.stringify(postsMap));
+    } catch (cacheError) {
+      console.warn('Failed to cache post locally:', cacheError);
+    }
+    
+    return cid;
+  } catch (error) {
+    console.error('Error uploading post to IPFS:', error);
+    return null;
+  }
 };
 
 /**
@@ -50,16 +80,165 @@ export const uploadPostToIPFS = async (postData) => {
  * @returns {Promise<Object|null>} Post data or null if not found
  */
 export const retrievePostFromIPFS = async (cid) => {
-  if (!hasIpfsCredentials()) {
-    throw new Error('IPFS credentials not configured');
+  try {
+    // Check if this is a mock CID for demo data
+    if (cid.startsWith('mock-demo-post-cid-')) {
+      console.warn('Using demo post data from localStorage.');
+      const postsMap = JSON.parse(localStorage.getItem('liberaChainIpfsPosts') || '{}');
+      return postsMap[cid] || null;
+    }
+    
+    // First check if we have it cached locally for faster loading
+    let cachedPost = null;
+    try {
+      const postsMap = JSON.parse(localStorage.getItem('liberaChainIpfsPosts') || '{}');
+      cachedPost = postsMap[cid];
+    } catch (e) {
+      // Cache miss or error reading cache, will proceed to fetch from IPFS
+    }
+    
+    // Try to fetch from IPFS
+    const fileContent = await getFile(cid);
+      
+    if (fileContent) {
+      const postData = JSON.parse(fileContent);
+      
+      // Update the local cache with fresh data
+      try {
+        const postsMap = JSON.parse(localStorage.getItem('liberaChainIpfsPosts') || '{}');
+        postsMap[cid] = postData;
+        localStorage.setItem('liberaChainIpfsPosts', JSON.stringify(postsMap));
+      } catch (cacheError) {
+        console.warn('Failed to update local cache:', cacheError);
+      }
+      
+      return postData;
+    }
+    
+    // If IPFS retrieval failed, return the cached version
+    if (cachedPost) {
+      console.warn('Using cached version of post from localStorage.');
+      return cachedPost;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error retrieving post from IPFS:', error);
+    
+    // Last resort fallback to local cache
+    try {
+      const postsMap = JSON.parse(localStorage.getItem('liberaChainIpfsPosts') || '{}');
+      const cachedPost = postsMap[cid];
+      if (cachedPost) {
+        console.warn('IPFS retrieval failed, using cached version.');
+        return cachedPost;
+      }
+    } catch (e) {
+      // Cache miss or error
+    }
+    
+    return null;
   }
+};
 
-  const fileContent = await getFile(cid);
-  if (!fileContent) {
-    throw new Error('Failed to fetch post from IPFS');
+/**
+ * Get all posts for a specific user from IPFS
+ * @param {string} did - User's DID
+ * @returns {Promise<Array>} Array of post objects
+ */
+export const getUserPostsFromIPFS = async (did) => {
+  try {
+    // First try to get latest posts using IPNS
+    const latestPosts = await getLatestContent(did, 'posts');
+    if (latestPosts) {
+      return Array.isArray(latestPosts) ? latestPosts : [latestPosts];
+    }
+
+    // Fallback to traditional method if no IPNS record exists
+    const processedCids = new Set();
+    let allUserPosts = [];
+    
+    // Get user's post CIDs from local registry
+    const userPosts = JSON.parse(localStorage.getItem('liberaChainUserPosts') || '{}');
+    const localPostCids = userPosts[did] || [];
+    
+    // If we have IPFS access, try to get posts from there
+    if (hasS3Credentials()) {
+      try {
+        // List all post files through our API proxy
+        const response = await fetch(getS3Gateway());
+        
+        if (!response.ok) {
+          throw new Error(`Failed to list files: ${response.status}`);
+        }
+        
+        const listData = await response.json();
+        
+        if (listData.success && listData.files) {
+          // Process each post file to find posts by this user
+          await Promise.all(listData.files.map(async (filename) => {
+            try {
+              // Skip files we've already processed
+              if (processedCids.has(filename)) {
+                return;
+              }
+              
+              const postContent = await getFile(filename);
+              if (postContent) {
+                const postData = JSON.parse(postContent);
+                
+                // Check if the post is by the user we're looking for
+                if (postData.authorDid === did) {
+                  processedCids.add(filename);
+                  allUserPosts.push({
+                    ...postData,
+                    cid: filename,
+                    source: 'ipfs'
+                  });
+                }
+              }
+            } catch (fileError) {
+              console.warn(`Error processing file ${filename}:`, fileError);
+            }
+          }));
+        }
+      } catch (listError) {
+        console.error('Error listing posts from IPFS:', listError);
+      }
+    }
+    
+    // Also get posts from local storage
+    const localPosts = await Promise.all(
+      localPostCids.map(async (cid) => {
+        if (processedCids.has(cid)) return null;
+        processedCids.add(cid);
+        const postData = await retrievePostFromIPFS(cid);
+        if (postData) {
+          return { ...postData, cid, source: 'ipfs' };
+        }
+        return null;
+      })
+    );
+    
+    // Combine IPFS and local posts, filter out nulls
+    allUserPosts = [
+      ...allUserPosts,
+      ...localPosts.filter(post => post !== null)
+    ];
+    
+    // Sort by timestamp, newest first
+    allUserPosts.sort((a, b) => b.timestamp - a.timestamp);
+    
+    // Store the aggregated posts in IPNS for future quick access
+    if (allUserPosts.length > 0) {
+      await updateContent(did, allUserPosts, 'posts');
+    }
+    
+    return allUserPosts;
+  } catch (error) {
+    console.error('Error getting user posts from IPFS:', error);
+    return [];
   }
-
-  return JSON.parse(fileContent);
 };
 
 /**
@@ -473,7 +652,7 @@ export const deleteComment = async (postIdentifier, commentId, userDid) => {
 
 /**
  * Check if user can post to blockchain (has enough balance)
- * @returns {Promise<Object>} Balance check result
+ * @returns {Promise<Object>}
  */
 export const checkBlockchainPostingAbility = async () => {
   return checkBalanceForPosting();
@@ -481,7 +660,7 @@ export const checkBlockchainPostingAbility = async () => {
 
 /**
  * Get the current post fee for blockchain
- * @returns {Promise<Object>} Fee information
+ * @returns {Promise<Object>}
  */
 export const getBlockchainPostingFee = async () => {
   return getBlockchainPostFee();

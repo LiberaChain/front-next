@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  ipfs:
+    container_name: ipfs-node
+    image: ipfs/kubo:latest
+    ports:
+      - "5001:5001"  # API
+      - "8080:8080"  # Gateway
+    volumes:
+      - ./ipfs/data:/data/ipfs
+      - ./ipfs/config.json:/data/ipfs/config
+    environment:
+      - IPFS_PROFILE=server
+      - IPFS_PATH=/data/ipfs
+      - IPFS_ENABLE_GC=true
+      - IPFS_GC_PERIOD=1h
+    command:
+      - "daemon"
+      - "--migrate=true"
+      - "--enable-gc"
+      - "--enable-pubsub-experiment"  # Required for IPNS
+    healthcheck:
+      test: ["CMD", "ipfs", "id"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
