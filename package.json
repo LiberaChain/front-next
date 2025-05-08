@@ -4,9 +4,17 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
+    "dev-public": "next dev --turbopack -H 0.0.0.0",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "ipfs:start": "docker-compose up -d",
+    "ipfs:stop": "docker-compose down",
+    "ipfs:logs": "docker-compose logs -f",
+    "ipfs:clean": "docker-compose down -v && rm -rf ipfs",
+    "ipfs:backup": "tar -czf ipfs-backup.tar.gz ipfs/",
+    "ipfs:restore": "tar -xzf ipfs-backup.tar.gz",
+    "ipfs:init": "mkdir -p ipfs/node0 ipfs/node1 ipfs/cluster0 ipfs/cluster1"
   },
   "dependencies": {
     "@decentralized-identity/did-auth-jose": "^0.1.14",

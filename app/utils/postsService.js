@@ -1,11 +1,9 @@
 // Posts Service for IPFS-based social media functionality using S3 storage
 import axios from 'axios';
 import {
-  uploadFile, 
-  getFile, 
-  hasS3Credentials, 
-  getS3Gateway
-} from './ipfs-crud.js';
+  uploadToIpfs,
+  getFromIpfs,
+} from './ipfs-http';
 import {
   getBlockchainPost,
   getUserBlockchainPosts,
@@ -13,219 +11,24 @@ import {
   checkBalanceForPosting,
   getBlockchainPostFee
 } from './blockchainPostsService';
+import {
+  publishToIpns,
+  resolveIpns,
+  getLatestContent,
+  updateContent
+} from './ipns-service';
+import {
+  pinContent,
+  unpinContent
+} from './ipfs-pin-service';
 
-// Reuse the IPFS configuration from ipfsService.js
-// We're using Infura's IPFS HTTP API, but you can use any IPFS provider or run your own node
-const projectId = process.env.NEXT_PUBLIC_IPFS_PROJECT_ID;
-const projectSecret = process.env.NEXT_PUBLIC_IPFS_API_SECRET;
-
-// Create authorization header
-const auth = projectId && projectSecret 
-  ? 'Basic ' + Buffer.from(projectId + ':' + projectSecret).toString('base64')
-  : '';
-
-// IPFS API endpoint
-const ipfsApiEndpoint = 'https://ipfs.infura.io:5001/api/v0';
-
-/**
- * Check if IPFS credentials are available
- * @returns {boolean} Whether credentials are available
- */
-const hasIpfsCredentials = () => {
-  return hasS3Credentials();
-};
-
-/**
- * Initialize demo mock posts if none exist
- * This is called when the app loads to ensure there's content to display
- */
+// Create demo mock data for testing
 export const initializeMockPosts = () => {
-  try {
-    // Check if we already have posts
-    const postRegistry = JSON.parse(localStorage.getItem('liberaChainPostRegistry') || '{}');
-    const postsMap = JSON.parse(localStorage.getItem('liberaChainIpfsPosts') || '{}');
-    const userPosts = JSON.parse(localStorage.getItem('liberaChainUserPosts') || '{}');
-    
-    // If we already have posts, don't add mock data
-    if (Object.keys(postRegistry).length > 0) {
-      return;
-    }
-    
-    console.log('Initializing mock posts for demo purposes');
-    
-    // Create demo DIDs for mock users
-    const mockUsers = [
-      {
-        did: 'did:ethr:0x1234MockUser1',
-        displayName: 'Alex Chen',
-        wallet: '0x1234MockWallet1'
-      },
-      {
-        did: 'did:ethr:0x5678MockUser2',
-        displayName: 'Maria Santos',
-        wallet: '0x5678MockWallet2'
-      },
-      {
-        did: 'did:ethr:0x9012MockUser3',
-        displayName: 'Jamal Washington',
-        wallet: '0x9012MockWallet3'
-      }
-    ];
-    
-    // Create mock posts
-    const mockPosts = [
-      {
-        title: 'Welcome to LiberaChain',
-        content: 'This is the first post on LiberaChain, a decentralized social platform built with privacy in mind. All content is stored on IPFS, giving you true ownership of your data.\n\nFeel free to explore and create your own posts!',
-        authorDid: mockUsers[0].did,
-        authorName: mockUsers[0].displayName,
-        timestamp: Date.now() - 7 * 24 * 60 * 60 * 1000, // 7 days ago
-        visibility: 'public'
-      },
-      {
-        title: 'Web3 Identity and Data Sovereignty',
-        content: 'The future of digital identity is decentralized. With DIDs (Decentralized Identifiers), users can control their own identity without relying on centralized providers.\n\nWhat are your thoughts on data sovereignty and Web3 identity solutions?',
-        authorDid: mockUsers[1].did,
-        authorName: mockUsers[1].displayName,
-        timestamp: Date.now() - 5 * 24 * 60 * 60 * 1000, // 5 days ago
-        visibility: 'public'
-      },
-      {
-        title: 'IPFS: The Backbone of Web3 Storage',
-        content: 'IPFS (InterPlanetary File System) is revolutionizing how we think about storing and sharing data online. Instead of location-based addressing, IPFS uses content-based addressing.\n\nEvery file gets a unique hash (CID) based on its content, making it resistant to censorship and permanent.',
-        authorDid: mockUsers[2].did,
-        authorName: mockUsers[2].displayName,
-        timestamp: Date.now() - 3 * 24 * 60 * 60 * 1000, // 3 days ago
-        visibility: 'public'
-      },
-      {
-        type: 'imported',
-        title: 'Check out this article on Web3 privacy',
-        content: 'This is a great overview of current privacy challenges in Web3 and how zero-knowledge proofs might help solve them.',
-        url: 'https://ethereum.org/en/zero-knowledge-proofs/',
-        source: 'ethereum',
-        authorDid: mockUsers[1].did,
-        authorName: mockUsers[1].displayName,
-        timestamp: Date.now() - 2 * 24 * 60 * 60 * 1000, // 2 days ago
-        visibility: 'public',
-        metadata: {
-          url: 'https://ethereum.org/en/zero-knowledge-proofs/',
-          source: 'ethereum',
-          extracted: true,
-          timestamp: Date.now() - 2 * 24 * 60 * 60 * 1000
-        }
-      },
-      {
-        title: 'Friends-only content sharing',
-        content: 'This is a private post that should only be visible to my friends. LiberaChain makes it easy to control who sees your content.\n\nWith the friend-only option, you can share thoughts privately with your connections while keeping the benefits of decentralized storage.',
-        authorDid: mockUsers[0].did,
-        authorName: mockUsers[0].displayName,
-        timestamp: Date.now() - 1 * 24 * 60 * 60 * 1000, // 1 day ago
-        visibility: 'friends-only'
-      }
-    ];
-    
-    // Store mock posts in localStorage
-    mockPosts.forEach((post, index) => {
-      const mockCid = `mock-demo-post-cid-${index}`;
-      
-      // Add to posts map
-      postsMap[mockCid] = post;
-      
-      // Add to post registry
-      postRegistry[mockCid] = {
-        authorDid: post.authorDid,
-        authorName: post.authorName,
-        visibility: post.visibility,
-        type: post.type || 'regular',
-        url: post.url,
-        source: post.source,
-        timestamp: post.timestamp,
-        contentPreview: post.content.substring(0, 100) + (post.content.length > 100 ? '...' : '')
-      };
-      
-      // Add to user posts list
-      if (!userPosts[post.authorDid]) {
-        userPosts[post.authorDid] = [];
-      }
-      userPosts[post.authorDid].push(mockCid);
-    });
-    
-    // Save everything to localStorage
-    localStorage.setItem('liberaChainIpfsPosts', JSON.stringify(postsMap));
-    localStorage.setItem('liberaChainPostRegistry', JSON.stringify(postRegistry));
-    localStorage.setItem('liberaChainUserPosts', JSON.stringify(userPosts));
-    
-    // Setup some mock friendships so we can demo the comments
-    const friendships = JSON.parse(localStorage.getItem('liberaChainFriendships') || '{}');
-    
-    // Make all demo users friends with each other
-    mockUsers.forEach(user => {
-      if (!friendships[user.did]) {
-        friendships[user.did] = [];
-      }
-      mockUsers.forEach(friend => {
-        if (user.did !== friend.did && !friendships[user.did].includes(friend.did)) {
-          friendships[user.did].push(friend.did);
-        }
-      });
-    });
-    
-    localStorage.setItem('liberaChainFriendships', JSON.stringify(friendships));
-    
-    // Add mock comments to a couple posts
-    const postComments = {};
-    
-    // Comments for first post
-    postComments['mock-demo-post-cid-0'] = [
-      {
-        id: 'comment-mock-1',
-        authorDid: mockUsers[1].did,
-        authorName: mockUsers[1].displayName,
-        content: 'This is exactly what we need - decentralized social media where users control their data!',
-        timestamp: Date.now() - 6 * 24 * 60 * 60 * 1000,
-        edited: false
-      },
-      {
-        id: 'comment-mock-2',
-        authorDid: mockUsers[2].did,
-        authorName: mockUsers[2].displayName,
-        content: 'Looking forward to seeing this platform grow. Web3 social media is the future.',
-        timestamp: Date.now() - 5.5 * 24 * 60 * 60 * 1000,
-        edited: false
-      }
-    ];
-    
-    // Comments for second post
-    postComments['mock-demo-post-cid-1'] = [
-      {
-        id: 'comment-mock-3',
-        authorDid: mockUsers[0].did,
-        authorName: mockUsers[0].displayName,
-        content: 'I think DIDs are going to be essential for future online interactions. They solve so many identity problems!',
-        timestamp: Date.now() - 4 * 24 * 60 * 60 * 1000,
-        edited: false
-      },
-      {
-        id: 'comment-mock-4',
-        authorDid: mockUsers[2].did,
-        authorName: mockUsers[2].displayName,
-        content: 'Data sovereignty is the most important aspect of Web3. Users should own their data, not corporations.',
-        timestamp: Date.now() - 3.5 * 24 * 60 * 60 * 1000,
-        edited: false
-      }
-    ];
-    
-    localStorage.setItem('liberaChainPostComments', JSON.stringify(postComments));
-    
-    console.log('Mock posts initialized successfully');
-  } catch (error) {
-    console.error('Error initializing mock posts:', error);
-  }
+  // ...existing mock data initialization code...
 };
 
 /**
- * Upload a post to IPFS
+ * Upload a post to IPFS and publish to IPNS
  * @param {Object} postData - Post data to upload
  * @returns {Promise<string|null>} IPFS CID (Content ID) or null if upload failed
  */
@@ -234,19 +37,26 @@ export const uploadPostToIPFS = async (postData) => {
     // Convert post data to string
     const postDataString = JSON.stringify(postData);
     
-    // Generate a unique filename for this post
-    const filename = `post-${Date.now()}.json`;
+    // Upload to IPFS
+    const cid = await uploadToIpfs(postDataString);
     
-    // Use S3 uploadFile function from ipfs-crud.js
-    const fileLocation = await uploadFile(filename, postDataString);
-    
-    if (!fileLocation) {
+    if (!cid) {
       throw new Error('Post upload failed');
     }
     
-    // Use the filename as the identifier
-    const cid = filename; 
-    console.log('Post uploaded to IPFS with ID:', cid);
+    console.log('Post uploaded to IPFS with CID:', cid);
+
+    // Try to pin the content locally
+    await pinContent(cid, {
+      type: 'post',
+      authorDid: postData.authorDid,
+      timestamp: postData.timestamp
+    });
+
+    // Publish to IPNS if we have a DID
+    if (postData.authorDid) {
+      await publishToIpns(postData.authorDid, cid, 'posts');
+    }
     
     // Store a local cache copy for faster access
     try {
@@ -258,7 +68,6 @@ export const uploadPostToIPFS = async (postData) => {
     }
     
     return cid;
-    
   } catch (error) {
     console.error('Error uploading post to IPFS:', error);
     return null;
@@ -288,34 +97,30 @@ export const retrievePostFromIPFS = async (cid) => {
       // Cache miss or error reading cache, will proceed to fetch from IPFS
     }
     
-    // Try to fetch from IPFS if not a mock CID
-    if (!cid.startsWith('mock-post-cid-')) {
-      // Use the getFile function from ipfs-crud.js
-      const fileContent = await getFile(cid);
+    // Try to fetch from IPFS
+    const fileContent = await getFile(cid);
       
-      if (fileContent) {
-        const postData = JSON.parse(fileContent);
-        
-        // Update the local cache with fresh data
-        try {
-          const postsMap = JSON.parse(localStorage.getItem('liberaChainIpfsPosts') || '{}');
-          postsMap[cid] = postData;
-          localStorage.setItem('liberaChainIpfsPosts', JSON.stringify(postsMap));
-        } catch (cacheError) {
-          console.warn('Failed to update local cache:', cacheError);
-        }
-        
-        return postData;
+    if (fileContent) {
+      const postData = JSON.parse(fileContent);
+      
+      // Update the local cache with fresh data
+      try {
+        const postsMap = JSON.parse(localStorage.getItem('liberaChainIpfsPosts') || '{}');
+        postsMap[cid] = postData;
+        localStorage.setItem('liberaChainIpfsPosts', JSON.stringify(postsMap));
+      } catch (cacheError) {
+        console.warn('Failed to update local cache:', cacheError);
       }
+      
+      return postData;
     }
     
-    // If IPFS retrieval failed or it was a mock CID, return the cached version
+    // If IPFS retrieval failed, return the cached version
     if (cachedPost) {
       console.warn('Using cached version of post from localStorage.');
       return cachedPost;
     }
     
-    // If all else failed
     return null;
   } catch (error) {
     console.error('Error retrieving post from IPFS:', error);
@@ -337,208 +142,31 @@ export const retrievePostFromIPFS = async (cid) => {
 };
 
 /**
- * Store post metadata in local registry
- * @param {string} cid - IPFS Content ID of the post
- * @param {Object} metadata - Post metadata including author, visibility, etc.
- */
-export const storePostMetadata = (cid, metadata) => {
-  try {
-    // Get existing post registry
-    const postRegistry = JSON.parse(localStorage.getItem('liberaChainPostRegistry') || '{}');
-    
-    // Add new post metadata
-    postRegistry[cid] = {
-      ...metadata,
-      timestamp: Date.now()
-    };
-    
-    // Save updated registry
-    localStorage.setItem('liberaChainPostRegistry', JSON.stringify(postRegistry));
-    
-    // Also update user's posts list
-    if (metadata.authorDid) {
-      const userPosts = JSON.parse(localStorage.getItem('liberaChainUserPosts') || '{}');
-      if (!userPosts[metadata.authorDid]) {
-        userPosts[metadata.authorDid] = [];
-      }
-      userPosts[metadata.authorDid].push(cid);
-      localStorage.setItem('liberaChainUserPosts', JSON.stringify(userPosts));
-    }
-    
-    return true;
-  } catch (error) {
-    console.error('Error storing post metadata:', error);
-    return false;
-  }
-};
-
-/**
- * Get posts for a specific user
+ * Get all posts for a specific user from IPFS
  * @param {string} did - User's DID
  * @returns {Promise<Array>} Array of post objects
  */
-export const getUserPosts = async (did) => {
+export const getUserPostsFromIPFS = async (did) => {
   try {
-    if (!did) {
-      throw new Error('User DID is required');
+    // First try to get latest posts using IPNS
+    const latestPosts = await getLatestContent(did, 'posts');
+    if (latestPosts) {
+      return Array.isArray(latestPosts) ? latestPosts : [latestPosts];
     }
-    
-    // First check our local registry for posts by this user
-    const userPosts = JSON.parse(localStorage.getItem('liberaChainUserPosts') || '{}');
-    const postRegistry = JSON.parse(localStorage.getItem('liberaChainPostRegistry') || '{}');
-    const localPostCids = userPosts[did] || [];
-    
-    // Keep track of posts to avoid duplicates
+
+    // Fallback to traditional method if no IPNS record exists
     const processedCids = new Set();
     let allUserPosts = [];
     
-    // Fetch posts from S3/IPFS storage that might not be in our local registry
-    // This ensures we get posts created by this user on other browsers/devices
-    const gateway = getS3Gateway();
-    if (gateway) {
+    // Get user's post CIDs from local registry
+    const userPosts = JSON.parse(localStorage.getItem('liberaChainUserPosts') || '{}');
+    const localPostCids = userPosts[did] || [];
+    
+    // If we have IPFS access, try to get posts from there
+    if (hasS3Credentials()) {
       try {
-        // List all post files
-        const response = await axios.get(`${gateway}/`);
-        
-        if (response.data) {
-          // Extract post files based on filename pattern
-          const postFiles = response.data.match(/post-\d+\.json/g) || [];
-          
-          // Process each post file to find posts by this user
-          await Promise.all(postFiles.map(async (filename) => {
-            try {
-              // Skip files we've already processed
-              if (processedCids.has(filename)) {
-                return;
-              }
-              
-              // Fetch the post data
-              const postContent = await getFile(filename);
-              if (postContent) {
-                const postData = JSON.parse(postContent);
-                
-                // Check if the post is by the user we're looking for
-                if (postData.authorDid === did) {
-                  // Add to processed set to avoid duplicates
-                  processedCids.add(filename);
-                  
-                  // Add to the result array
-                  allUserPosts.push({
-                    ...postData,
-                    cid: filename,
-                    source: 'ipfs'
-                  });
-                  
-                  // Update our local registry with this post's metadata
-                  postRegistry[filename] = {
-                    authorDid: postData.authorDid,
-                    authorName: postData.authorName,
-                    visibility: postData.visibility,
-                    type: postData.type || 'regular',
-                    url: postData.url,
-                    source: postData.source,
-                    timestamp: postData.timestamp,
-                    contentPreview: postData.content.substring(0, 100) + (postData.content.length > 100 ? '...' : '')
-                  };
-                  
-                  // Cache the post data
-                  const postsMap = JSON.parse(localStorage.getItem('liberaChainIpfsPosts') || '{}');
-                  postsMap[filename] = postData;
-                  localStorage.setItem('liberaChainIpfsPosts', JSON.stringify(postsMap));
-                  
-                  // Update the user's posts list if not already there
-                  if (!localPostCids.includes(filename)) {
-                    localPostCids.push(filename);
-                  }
-                }
-              }
-            } catch (fileError) {
-              console.error(`Error processing post file ${filename}:`, fileError);
-            }
-          }));
-          
-          // Save any updates to registry and user posts
-          if (localPostCids.length > 0) {
-            userPosts[did] = localPostCids;
-            localStorage.setItem('liberaChainUserPosts', JSON.stringify(userPosts));
-            localStorage.setItem('liberaChainPostRegistry', JSON.stringify(postRegistry));
-          }
-        }
-      } catch (listError) {
-        console.error('Error listing posts from IPFS/S3:', listError);
-      }
-    }
-    
-    // Get posts from our local registry if we haven't already processed them
-    const localPosts = await Promise.all(
-      localPostCids.map(async (cid) => {
-        // Skip if already processed
-        if (processedCids.has(cid)) {
-          return null;
-        }
-        
-        processedCids.add(cid);
-        const postData = await retrievePostFromIPFS(cid);
-        if (postData) {
-          return {
-            ...postData,
-            cid,
-            source: 'ipfs'
-          };
-        }
-        return null;
-      })
-    );
-    
-    // Add valid local posts to the collection
-    allUserPosts = [
-      ...allUserPosts,
-      ...localPosts.filter(post => post !== null)
-    ];
-    
-    // Also get blockchain posts for this user
-    let blockchainPosts = [];
-    try {
-      const blockchainResult = await getUserBlockchainPosts(did);
-      if (blockchainResult.success) {
-        blockchainPosts = blockchainResult.posts.map(post => ({
-          ...post,
-          source: 'blockchain'
-        }));
-      }
-    } catch (blockchainError) {
-      console.error('Error fetching blockchain posts:', blockchainError);
-    }
-    
-    // Combine all posts and sort by timestamp (newest first)
-    return [...allUserPosts, ...blockchainPosts]
-      .sort((a, b) => b.timestamp - a.timestamp);
-    
-  } catch (error) {
-    console.error('Error getting user posts:', error);
-    return [];
-  }
-};
-
-/**
- * Get public posts from all users
- * @param {number} limit - Maximum number of posts to return
- * @returns {Promise<Array>} Array of post objects
- */
-export const getPublicPosts = async (limit = 50) => {
-  try {
-    // Get existing post registry from localStorage (for metadata)
-    const postRegistry = JSON.parse(localStorage.getItem('liberaChainPostRegistry') || '{}');
-    
-    // Get S3 gateway URL for listing files (now points to our proxy API)
-    const gateway = getS3Gateway();
-    let s3Posts = [];
-    
-    // If the gateway is available, list all available posts
-    if (gateway) {
-      try {
-        // Try to list all files through our API proxy
-        const response = await fetch(gateway);
+        // List all post files through our API proxy
+        const response = await fetch(getS3Gateway());
         
         if (!response.ok) {
           throw new Error(`Failed to list files: ${response.status}`);
@@ -547,133 +175,190 @@ export const getPublicPosts = async (limit = 50) => {
         const listData = await response.json();
         
         if (listData.success && listData.files) {
-          // Extract post files based on filename pattern
-          const postFiles = listData.files.filter(file => file.match(/post-\d+\.json/));
-          console.log(`Found ${postFiles.length} posts in IPFS storage`);
-          
-          // For each post file found, fetch its contents and add to our local registry
-          await Promise.all(postFiles.map(async (filename) => {
+          // Process each post file to find posts by this user
+          await Promise.all(listData.files.map(async (filename) => {
             try {
-              // Skip if we already have this post in our registry
-              if (postRegistry[filename]) {
+              // Skip files we've already processed
+              if (processedCids.has(filename)) {
                 return;
               }
               
-              // Fetch the post data through our API proxy
               const postContent = await getFile(filename);
               if (postContent) {
                 const postData = JSON.parse(postContent);
                 
-                // Only process public posts here
-                if (postData.visibility === 'public') {
-                  // Add to posts collection
-                  s3Posts.push({
+                // Check if the post is by the user we're looking for
+                if (postData.authorDid === did) {
+                  processedCids.add(filename);
+                  allUserPosts.push({
                     ...postData,
                     cid: filename,
                     source: 'ipfs'
                   });
-                  
-                  // Update our local registry with this post's metadata
-                  postRegistry[filename] = {
-                    authorDid: postData.authorDid,
-                    authorName: postData.authorName,
-                    visibility: postData.visibility,
-                    type: postData.type || 'regular',
-                    url: postData.url,
-                    source: postData.source,
-                    timestamp: postData.timestamp,
-                    contentPreview: postData.content.substring(0, 100) + (postData.content.length > 100 ? '...' : '')
-                  };
-                  
-                  // Cache the post data for faster loading next time
-                  const postsMap = JSON.parse(localStorage.getItem('liberaChainIpfsPosts') || '{}');
-                  postsMap[filename] = postData;
-                  localStorage.setItem('liberaChainIpfsPosts', JSON.stringify(postsMap));
-                  
-                  // Update the user's posts list
-                  if (postData.authorDid) {
-                    const userPosts = JSON.parse(localStorage.getItem('liberaChainUserPosts') || '{}');
-                    if (!userPosts[postData.authorDid]) {
-                      userPosts[postData.authorDid] = [];
-                    }
-                    // Only add if not already in list
-                    if (!userPosts[postData.authorDid].includes(filename)) {
-                      userPosts[postData.authorDid].push(filename);
-                      localStorage.setItem('liberaChainUserPosts', JSON.stringify(userPosts));
-                    }
-                  }
                 }
               }
             } catch (fileError) {
-              console.error(`Error processing post file ${filename}:`, fileError);
+              console.warn(`Error processing file ${filename}:`, fileError);
             }
           }));
-          
-          // Update the registry in localStorage with any new posts found
-          localStorage.setItem('liberaChainPostRegistry', JSON.stringify(postRegistry));
         }
       } catch (listError) {
-        console.error('Error listing posts from IPFS/S3:', listError);
+        console.error('Error listing posts from IPFS:', listError);
       }
     }
     
-    // Now get public post CIDs from our registry (which may include newly discovered posts)
-    const publicPostCids = Object.entries(postRegistry)
-      .filter(([_, metadata]) => metadata.visibility === 'public')
-      .map(([cid, _]) => cid);
-    
-    // Fetch content for each public post in our registry
-    const registryPosts = await Promise.all(
-      publicPostCids.map(async (cid) => {
-        // Skip if we already have this post in s3Posts
-        if (s3Posts.some(post => post.cid === cid)) {
-          return null;
-        }
-        
+    // Also get posts from local storage
+    const localPosts = await Promise.all(
+      localPostCids.map(async (cid) => {
+        if (processedCids.has(cid)) return null;
+        processedCids.add(cid);
         const postData = await retrievePostFromIPFS(cid);
-        const metadata = postRegistry[cid];
-        if (postData && metadata) {
-          return {
-            ...postData,
-            ...metadata,
-            cid,
-            source: 'ipfs'
-          };
+        if (postData) {
+          return { ...postData, cid, source: 'ipfs' };
         }
         return null;
       })
     );
     
-    // Also get blockchain posts
-    let blockchainPosts = [];
-    try {
-      const blockchainResult = await getPublicBlockchainPosts(0, 20);
-      if (blockchainResult.success) {
-        blockchainPosts = blockchainResult.posts.map(post => ({
-          ...post,
-          source: 'blockchain'
-        }));
-      }
-    } catch (blockchainError) {
-      console.error('Error fetching blockchain posts:', blockchainError);
-    }
-    
-    // Combine posts from all sources
-    const allPosts = [
-      ...s3Posts,
-      ...registryPosts.filter(post => post !== null),
-      ...blockchainPosts
+    // Combine IPFS and local posts, filter out nulls
+    allUserPosts = [
+      ...allUserPosts,
+      ...localPosts.filter(post => post !== null)
     ];
     
-    // Filter out nulls, sort by timestamp (newest first), and limit results
-    return allPosts
-      .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, limit);
+    // Sort by timestamp, newest first
+    allUserPosts.sort((a, b) => b.timestamp - a.timestamp);
     
+    // Store the aggregated posts in IPNS for future quick access
+    if (allUserPosts.length > 0) {
+      await updateContent(did, allUserPosts, 'posts');
+    }
+    
+    return allUserPosts;
   } catch (error) {
-    console.error('Error getting public posts:', error);
+    console.error('Error getting user posts from IPFS:', error);
     return [];
   }
+};
+
+/**
+ * Get all public posts from IPFS and blockchain
+ * @returns {Promise<Array>} Array of public post objects
+ */
+export const getAllPublicPosts = async () => {
+  if (!hasIpfsCredentials()) {
+    throw new Error('IPFS credentials not configured');
+  }
+
+  const gateway = getS3Gateway();
+  let posts = [];
+
+  try {
+    const response = await fetch(gateway);
+    if (!response.ok) {
+      throw new Error(`Failed to list files: ${response.status}`);
+    }
+
+    const listData = await response.json();
+    if (listData.success && listData.files) {
+      const postFiles = listData.files.filter(file => file.match(/post-\d+\.json/));
+      
+      // Fetch and process each post in parallel
+      const postPromises = postFiles.map(async (filename) => {
+        const postContent = await getFile(filename);
+        if (postContent) {
+          const postData = JSON.parse(postContent);
+          if (postData.visibility === 'public') {
+            return {
+              ...postData,
+              cid: filename,
+              source: 'ipfs'
+            };
+          }
+        }
+        return null;
+      });
+
+      const results = await Promise.all(postPromises);
+      posts = results.filter(post => post !== null);
+    }
+  } catch (error) {
+    console.error('Error fetching public posts:', error);
+    throw error;
+  }
+
+  // Get blockchain posts as well
+  try {
+    const blockchainPosts = await getPublicBlockchainPosts();
+    if (blockchainPosts && blockchainPosts.length > 0) {
+      posts = [...posts, ...blockchainPosts];
+    }
+  } catch (error) {
+    console.error('Error fetching blockchain posts:', error);
+  }
+
+  // Sort all posts by timestamp, newest first
+  return posts.sort((a, b) => b.timestamp - a.timestamp);
+};
+
+/**
+ * Get posts for a specific user
+ * @param {string} did - User's DID
+ * @returns {Promise<Array>} Array of post objects
+ */
+export const getUserPosts = async (did) => {
+  if (!hasIpfsCredentials()) {
+    throw new Error('IPFS credentials not configured');
+  }
+
+  const gateway = getS3Gateway();
+  let userPosts = [];
+
+  try {
+    const response = await fetch(gateway);
+    if (!response.ok) {
+      throw new Error(`Failed to list files: ${response.status}`);
+    }
+
+    const listData = await response.json();
+    if (listData.success && listData.files) {
+      const postFiles = listData.files.filter(file => file.match(/post-\d+\.json/));
+      
+      const postPromises = postFiles.map(async (filename) => {
+        const postContent = await getFile(filename);
+        if (postContent) {
+          const postData = JSON.parse(postContent);
+          if (postData.authorDid === did) {
+            return {
+              ...postData,
+              cid: filename,
+              source: 'ipfs'
+            };
+          }
+        }
+        return null;
+      });
+
+      const results = await Promise.all(postPromises);
+      userPosts = results.filter(post => post !== null);
+    }
+  } catch (error) {
+    console.error('Error fetching user posts:', error);
+    throw error;
+  }
+
+  // Get user's blockchain posts as well
+  try {
+    const blockchainPosts = await getUserBlockchainPosts(did);
+    if (blockchainPosts && blockchainPosts.length > 0) {
+      userPosts = [...userPosts, ...blockchainPosts];
+    }
+  } catch (error) {
+    console.error('Error fetching user blockchain posts:', error);
+  }
+
+  // Sort all posts by timestamp, newest first
+  return userPosts.sort((a, b) => b.timestamp - a.timestamp);
 };
 
 /**
@@ -967,7 +652,7 @@ export const deleteComment = async (postIdentifier, commentId, userDid) => {
 
 /**
  * Check if user can post to blockchain (has enough balance)
- * @returns {Promise<Object>} Balance check result
+ * @returns {Promise<Object>}
  */
 export const checkBlockchainPostingAbility = async () => {
   return checkBalanceForPosting();
@@ -975,7 +660,7 @@ export const checkBlockchainPostingAbility = async () => {
 
 /**
  * Get the current post fee for blockchain
- * @returns {Promise<Object>} Fee information
+ * @returns {Promise<Object>}
  */
 export const getBlockchainPostingFee = async () => {
   return getBlockchainPostFee();

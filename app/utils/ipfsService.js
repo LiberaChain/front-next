@@ -1,18 +1,34 @@
-// IPFS Service for user profile storage using S3-compatible implementation from Filebase
+// IPFS Service for user profile storage using IPFS HTTP gateway
 import {
-  uploadFile,
-  getFile,
-  updateFile,
-  hasS3Credentials,
-  getS3Gateway
-} from './ipfs-crud.js';
+  uploadToIpfs,
+  getFromIpfs,
+  publishToIpns as publishToNode,
+  createIpnsKey,
+  resolveIpnsName
+} from './ipfs-http';
+import {
+  publishToIpns,
+  resolveIpns,
+  getLatestContent,
+  updateContent
+} from './ipns-service';
+import {
+  pinContent,
+  unpinContent
+} from './ipfs-pin-service';
 
 /**
- * Check if IPFS credentials are available
- * @returns {boolean} Whether credentials are available
+ * Check if IPFS is available
+ * @returns {boolean} Whether IPFS is available
  */
 export const hasIpfsCredentials = () => {
-  return hasS3Credentials();
+  try {
+    return process.env.NEXT_PUBLIC_IPFS_HOST && 
+           process.env.NEXT_PUBLIC_IPFS_API_PORT && 
+           process.env.NEXT_PUBLIC_IPFS_GATEWAY_PORT;
+  } catch (error) {
+    return false;
+  }
 };
 
 /**
@@ -21,14 +37,19 @@ export const hasIpfsCredentials = () => {
  */
 export const getIpfsStatus = () => {
   const isConnected = hasIpfsCredentials();
+  const host = process.env.NEXT_PUBLIC_IPFS_HOST || 'localhost';
+  const apiPort = process.env.NEXT_PUBLIC_IPFS_API_PORT || '5001';
+  const gatewayPort = process.env.NEXT_PUBLIC_IPFS_GATEWAY_PORT || '8080';
+  
   return {
     connected: isConnected,
     mode: isConnected ? 'distributed' : 'local_storage',
-    gateway: isConnected ? getS3Gateway() : 'mock (localStorage)',
-    apiEndpoint: isConnected ? 'S3-compatible API' : 'none',
-    nodeType: isConnected ? 'Filebase S3' : 'Local Mock',
+    gateway: isConnected ? `http://${host}:${gatewayPort}` : 'mock (localStorage)',
+    apiEndpoint: isConnected ? `http://${host}:${apiPort}` : 'none',
+    nodeType: isConnected ? 'IPFS Node' : 'Local Mock',
     health: isConnected ? 'healthy' : 'simulated',
-    storageCount: isConnected ? null : getLocalStorageItemCount()
+    storageCount: isConnected ? null : getLocalStorageItemCount(),
+    state: isConnected ? 'IPNS Enabled' : 'Local Only'
   };
 };
 
@@ -48,160 +69,93 @@ const getLocalStorageItemCount = () => {
 /**
  * Upload user profile data to IPFS
  * @param {Object} profileData - User profile data to upload
- * @returns {Promise<string|null>} IPFS CID (Content ID) or null if upload failed
+ * @returns {Promise<string|null>} IPFS CID or null if upload failed
  */
 export const uploadProfileToIPFS = async (profileData) => {
   try {
-    // If IPFS credentials are not available, use fallback
+    // If IPFS is not available, use fallback
     if (!hasIpfsCredentials()) {
-      console.warn('IPFS credentials not found. Using fallback storage.');
-      // For development, we'll store in localStorage as fallback
+      console.warn('IPFS not available. Using fallback storage.');
       const profilesMap = JSON.parse(localStorage.getItem('liberaChainIpfsProfiles') || '{}');
       const mockCid = 'mock-cid-' + Date.now();
       profilesMap[mockCid] = profileData;
       localStorage.setItem('liberaChainIpfsProfiles', JSON.stringify(profilesMap));
       return mockCid;
     }
+
+    // Use updateContent which handles both IPFS upload and IPNS publishing
+    const { cid, ipnsName } = await updateContent(profileData.did, profileData, 'profile');
+    console.log('Profile uploaded and published:', { cid, ipnsName });
     
-    // Convert profile data to string
-    const profileDataString = JSON.stringify(profileData);
-    
-    // Generate a unique filename for this profile
-    const filename = `profile-${Date.now()}.json`;
-    
-    // Use S3 uploadFile function from ipfs-crud.js
-    const fileLocation = await uploadFile(filename, profileDataString);
-    
-    if (!fileLocation) {
-      throw new Error('Upload failed');
-    }
-    
-    // Extract CID or filename from the location URL to use as identifier
-    const cid = filename; // Using filename as the CID identifier
-    console.log('Profile uploaded to IPFS with ID:', cid);
+    // Try to pin the profile content
+    await pinContent(cid, {
+      type: 'profile',
+      did: profileData.did,
+      timestamp: Date.now()
+    });
+
     return cid;
-    
   } catch (error) {
     console.error('Error uploading profile to IPFS:', error);
-    
-    // Fallback to localStorage if the upload fails
-    const profilesMap = JSON.parse(localStorage.getItem('liberaChainIpfsProfiles') || '{}');
-    const mockCid = 'mock-cid-' + Date.now();
-    profilesMap[mockCid] = profileData;
-    localStorage.setItem('liberaChainIpfsProfiles', JSON.stringify(profilesMap));
-    
-    return mockCid;
+    return null;
   }
 };
 
 /**
  * Retrieve user profile data from IPFS
- * @param {string} cid - IPFS Content ID (CID) or filename
+ * @param {string} did - The DID to get the profile for
  * @returns {Promise<Object|null>} User profile data or null if not found
  */
-export const retrieveProfileFromIPFS = async (cid) => {
+export const retrieveProfileFromIPFS = async (did) => {
   try {
-    // Check if this is a mock CID for localStorage storage
-    if (cid.startsWith('mock-cid-')) {
-      console.warn('Using fallback storage for retrieval.');
-      const profilesMap = JSON.parse(localStorage.getItem('liberaChainIpfsProfiles') || '{}');
-      return profilesMap[cid] || null;
+    // Try to get the latest profile using IPNS first
+    const profile = await getLatestContent(did, 'profile');
+    if (profile) {
+      return profile;
+    }
+
+    // If no IPNS record exists, check localStorage fallback
+    const profilesMap = JSON.parse(localStorage.getItem('liberaChainIpfsProfiles') || '{}');
+    
+    // Look for any profile with matching DID in localStorage
+    for (const [cid, data] of Object.entries(profilesMap)) {
+      if (data.did === did) {
+        return data;
+      }
     }
     
-    // Use the getFile function from ipfs-crud.js
-    const fileContent = await getFile(cid);
-    
-    if (!fileContent) {
-      throw new Error(`Failed to fetch IPFS content`);
-    }
-    
-    return JSON.parse(fileContent);
+    return null;
   } catch (error) {
     console.error('Error retrieving profile from IPFS:', error);
-    
-    // Check if we have this CID in localStorage as fallback
-    try {
-      const profilesMap = JSON.parse(localStorage.getItem('liberaChainIpfsProfiles') || '{}');
-      return profilesMap[cid] || null;
-    } catch (e) {
-      return null;
-    }
+    return null;
   }
 };
 
 /**
- * Update a user profile in IPFS
- * @param {string} cid - Original IPFS Content ID (CID) or filename
+ * Update user profile in IPFS
+ * @param {string} did - The DID of the profile to update
  * @param {Object} profileData - Updated user profile data
  * @returns {Promise<string|null>} New IPFS CID
  */
-export const updateProfileInIPFS = async (cid, profileData) => {
+export const updateProfileInIPFS = async (did, profileData) => {
   try {
-    console.log('Attempting to update profile in IPFS with CID/filename:', cid);
-    
-    // Check if this is a mock CID for localStorage storage
-    if (cid.startsWith('mock-cid-')) {
-      console.log('Using localStorage fallback for update');
-      // Use fallback storage for update
+    // If IPFS is not available, use fallback
+    if (!hasIpfsCredentials()) {
+      console.warn('IPFS not available. Using fallback storage.');
       const profilesMap = JSON.parse(localStorage.getItem('liberaChainIpfsProfiles') || '{}');
-      profilesMap[cid] = profileData;
+      const mockCid = 'mock-cid-' + Date.now();
+      profilesMap[mockCid] = profileData;
       localStorage.setItem('liberaChainIpfsProfiles', JSON.stringify(profilesMap));
-      return cid; // Return the same mock CID
+      return mockCid;
     }
-    
-    // Convert profile data to string
-    const profileDataString = JSON.stringify(profileData);
-    console.log('Profile data prepared for update:', { 
-      did: profileData.did,
-      username: profileData.username,
-      bucket: process.env.NEXT_PUBLIC_S3_BUCKET_NAME
-    });
-    
-    // First check if the file exists before updating
-    const fileExists = await checkFileExists(cid);
-    
-    // If file doesn't exist, create a new one instead
-    if (!fileExists) {
-      console.warn('File not found in S3 with key:', cid);
-      console.log('Creating new file instead of updating...');
-      // Generate a new unique filename
-      const newFilename = `profile-${Date.now()}.json`;
-      const fileLocation = await uploadFile(newFilename, profileDataString);
-      
-      if (!fileLocation) {
-        throw new Error('Upload failed');
-      }
-      
-      console.log('Created new profile instead of update. New location:', fileLocation);
-      return newFilename; // Return the new filename/key
-    }
-    
-    // Update the file with new content
-    console.log('Updating existing file in S3:', cid);
-    const updatedLocation = await updateFile(cid, profileDataString);
-    
-    if (!updatedLocation) {
-      throw new Error('Update failed');
-    }
-    
-    console.log('Profile updated successfully in S3:', updatedLocation);
-    return cid; // Return the same filename/key
+
+    // Use updateContent to handle both IPFS upload and IPNS update
+    const { cid } = await updateContent(did, profileData, 'profile');
+    console.log('Profile updated with new CID:', cid);
+    return cid;
+
   } catch (error) {
     console.error('Error updating profile in IPFS:', error);
-    // Create a new file if update fails for any reason
-    try {
-      console.log('Attempting to create a new file after update failure');
-      const newFilename = `profile-${Date.now()}.json`;
-      const profileDataString = JSON.stringify(profileData);
-      const fileLocation = await uploadFile(newFilename, profileDataString);
-      
-      if (fileLocation) {
-        console.log('Successfully created new profile after update failure:', fileLocation);
-        return newFilename;
-      }
-    } catch (secondError) {
-      console.error('Failed to create new file after update failure:', secondError);
-    }
     return null;
   }
 };

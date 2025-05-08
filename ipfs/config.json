@@ -1,0 +1,44 @@
+{
+  "Addresses": {
+    "API": "/ip4/0.0.0.0/tcp/5001",
+    "Gateway": "/ip4/0.0.0.0/tcp/8080"
+  },
+  "Discovery": {
+    "MDNS": {
+      "Enabled": false
+    }
+  },
+  "Datastore": {
+    "StorageMax": "10GB",
+    "StorageGCWatermark": 80,
+    "GCPeriod": "24h"
+  },
+  "Pinning": {
+    "RemoteServices": {},
+    "APIHeaders": {},
+    "VerifyMaxTime": "30s",
+    "VerifyPerPage": 1000,
+    "MaxConcurrentPinningRequests": 5
+  },
+  "Gateway": {
+    "PathPrefixes": ["/ipfs", "/ipns"],
+    "APICommands": ["pin", "add", "cat", "get"],
+    "NoFetch": false,
+    "NoDNSLink": false,
+    "HTTPHeaders": {
+      "Access-Control-Allow-Origin": ["*"]
+    }
+  },
+  "Ipns": {
+    "RepublishPeriod": "24h",
+    "RecordLifetime": "168h",
+    "ResolveCacheSize": 128,
+    "MaxCacheFreshness": "10m"
+  },
+  "Pins": {
+    "AllowPrefix": [
+      "/ipns",
+      "/ipfs/QmLibera"
+    ]
+  }
+}
