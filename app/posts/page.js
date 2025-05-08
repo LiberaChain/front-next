@@ -20,6 +20,9 @@ import {
 } from '../utils/postsService';
 
 import { createBlockchainPost } from '../utils/blockchainPostsService';
+import { CheckCircleIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
+import { ethers } from 'ethers';
+import { toast } from 'react-hot-toast';
 import { verifyLocationQRCode } from '../utils/qrCodeService';
 
 export default function PostsPage() {
@@ -207,6 +210,57 @@ export default function PostsPage() {
     }
   };
 
+  // Function to create a signable message from post data
+  const createSignableMessage = (postData) => {
+    return `Post on LiberaChain:\n\nTitle: ${postData.title}\nContent: ${postData.content}\nTimestamp: ${postData.timestamp}\nAuthor DID: ${postData.authorDid}`;
+  };
+
+  // Function to sign post with wallet
+  const signPost = async (postData) => {
+    try {
+      if (!window.ethereum) {
+        throw new Error("Wallet not connected");
+      }
+
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const signer = provider.getSigner();
+      
+      // Create a message that includes all relevant post data
+      const message = createSignableMessage(postData);
+      
+      // Sign the message with the user's private key
+      const signature = await signer.signMessage(message);
+      return signature;
+    } catch (err) {
+      console.error("Error signing post:", err);
+      throw err;
+    }
+  };
+
+  // Function to verify a post's signature
+  const verifyPostSignature = async (postData, signature) => {
+    try {
+      if (!signature) {
+        return false;
+      }
+
+      const message = createSignableMessage(postData);
+      const messageHash = ethers.utils.hashMessage(message);
+      const recoveredAddress = ethers.utils.recoverAddress(messageHash, signature);
+      
+      // For blockchain posts or posts with DIDs, verify against the author's DID
+      if (postData.authorDid) {
+        const ethAddress = postData.authorDid.split(':')[2]; // Extract address from did:ethr:0x...
+        return recoveredAddress.toLowerCase() === ethAddress.toLowerCase();
+      }
+      
+      return false;
+    } catch (err) {
+      console.error("Error verifying signature:", err);
+      return false;
+    }
+  };
+
   // Handle post submission
   const handlePostSubmit = async (e) => {
     e.preventDefault();
@@ -236,6 +290,17 @@ export default function PostsPage() {
         contentType: 'text',
         visibility: postVisibility
       };
+
+      // Sign the post data
+      const signature = await signPost(postData);
+      const isValid = await verifyPostSignature(postData, signature);
+
+      if (!isValid) {
+        throw new Error('Post signature verification failed');
+      }
+
+      // Add signature to post data
+      postData.signature = signature;
       
       // Add location data if available
       if (scannedLocationDid) {
@@ -247,7 +312,7 @@ export default function PostsPage() {
           postData.locationInfo = locationInfo;
         }
       }
-      
+    
       // Choose storage method based on user selection
       if (postStorage === 'blockchain') {
         // Add donation amount if applicable
@@ -1440,28 +1505,45 @@ export default function PostsPage() {
                         )}
                         
                         <div className="mt-4 pt-2 border-t border-gray-600 flex justify-between items-center">
-                          <div className="text-xs text-gray-400">
-                            {post.source === 'blockchain' ? (
-                              <span title={`On-chain post ID: ${post.postId}`}>
-                                Blockchain ID: {post.postId?.substring(0, 10)}...
-                              </span>
-                            ) : post.cid ? (
-                              <span title={`IPFS CID: ${post.cid}`}>
-                                IPFS: {post.cid.substring(0, 8)}...{post.cid.substring(post.cid.length - 4)}
-                              </span>
-                            ) : null}
+                          <div className="flex items-center space-x-2">
+                            <div className="text-xs text-gray-400">
+                              {post.source === 'blockchain' ? (
+                                <span title={`On-chain post ID: ${post.postId}`}>
+                                  Blockchain ID: {post.postId?.substring(0, 10)}...
+                                </span>
+                              ) : post.cid ? (
+                                <span title={`IPFS CID: ${post.cid}`}>
+                                  IPFS CID: {post.cid.substring(0, 10)}...
+                                </span>
+                              ) : null}
+                            </div>
+                            
+                            {post.signature && (
+                              <div className="flex items-center ml-4">
+                                {post.verified ? (
+                                  <span className="text-green-500 flex items-center" title="Post signature verified">
+                                    <CheckCircleIcon className="h-4 w-4 mr-1" />
+                                    Verified
+                                  </span>
+                                ) : (
+                                  <button
+                                    onClick={async () => {
+                                      const isValid = await verifyPostSignature(post, post.signature);
+                                      if (isValid) {
+                                        toast.success("Post signature verified successfully!");
+                                      } else {
+                                        toast.error("Post signature verification failed. Content may have been tampered with.");
+                                      }
+                                    }}
+                                    className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded-md text-white flex items-center"
+                                  >
+                                    <ShieldCheckIcon className="h-4 w-4 mr-1" />
+                                    Verify Signature
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
-                          
-                          <button
-                            onClick={() => toggleComments(post.cid || post.postId)}
-                            className="text-xs text-blue-400 hover:text-blue-300 flex items-center"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                            </svg>
-                            {commentsMap[post.cid || post.postId]?.length || 0} Comments
-                            {expandedPosts[post.cid || post.postId] ? ' (hide)' : ' (show)'}
-                          </button>
                         </div>
                         
                         {/* Comments Section */}

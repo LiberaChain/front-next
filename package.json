@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@decentralized-identity/did-auth-jose": "^0.1.14",
+    "@heroicons/react": "^2.2.0",
     "aws-sdk": "^2.1692.0",
     "axios": "^1.8.4",
     "did-resolver": "^4.1.0",
@@ -30,6 +31,7 @@
     "qrcode.react": "^4.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-hot-toast": "^2.5.2",
     "react-qr-code": "^2.0.15",
     "stream-chat": "^8.60.0",
     "stream-chat-react": "^12.14.0"

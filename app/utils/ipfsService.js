@@ -258,3 +258,82 @@ const checkFileExists = async (filename) => {
     return false;
   }
 };
+
+// IPFS Service for interacting with IPFS/S3 storage
+import { getS3Gateway, hasS3Credentials } from './storage/s3Config';
+
+// Store content on IPFS/S3
+export const uploadPostToIPFS = async (postData) => {
+  try {
+    // Add signature to metadata if it exists
+    const metadata = {
+      ...JSON.parse(postData.metadata || '{}'),
+      signature: postData.signature || null
+    };
+    
+    const postToStore = {
+      ...postData,
+      metadata: JSON.stringify(metadata)
+    };
+
+    const response = await fetch(`${getS3Gateway()}/upload`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(postToStore)
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return {
+      success: true,
+      cid: data.cid
+    };
+  } catch (error) {
+    console.error('Error uploading to IPFS:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to upload to IPFS'
+    };
+  }
+};
+
+// Retrieve content from IPFS/S3
+export const retrievePostFromIPFS = async (cid) => {
+  try {
+    const response = await fetch(`${getS3Gateway()}/retrieve/${cid}`);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const postData = await response.json();
+
+    // Extract signature from metadata if it exists
+    let signature = null;
+    try {
+      const metadata = JSON.parse(postData.metadata || '{}');
+      signature = metadata.signature;
+    } catch (e) {
+      console.warn('Failed to parse post metadata:', e);
+    }
+
+    return {
+      success: true,
+      post: {
+        ...postData,
+        signature,
+        verified: false // Will be verified on display if needed
+      }
+    };
+  } catch (error) {
+    console.error('Error retrieving from IPFS:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to retrieve from IPFS'
+    };
+  }
+};

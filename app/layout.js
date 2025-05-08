@@ -1,5 +1,6 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { Toaster } from "react-hot-toast";
 import { StateProvider } from "./components/StateContext";
 
 const geistSans = Geist({
@@ -25,6 +26,7 @@ export default function RootLayout({ children }) {
       >
         <StateProvider>
           {children}
+          <Toaster position="top-right" />
         </StateProvider>
       </body>
     </html>
