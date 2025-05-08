@@ -4,9 +4,9 @@ import { getContract, getProviderAndSigner, getCurrentUserAddress } from './bloc
 
 // Define the BlockchainPosts contract ABI
 const blockchainPostsABI = [
-  // Post creation and retrieval
-  "function createPost(string memory _content, string memory _title, string memory _authorDid, string memory _authorName, string memory _contentType, string memory _visibility, string memory _ipfsCid, string memory _metadata) public payable returns (bytes32)",
-  "function getPost(bytes32 _postId) public view returns (string memory content, string memory title, string memory authorDid, string memory authorName, string memory contentType, uint256 timestamp, string memory visibility, string memory ipfsCid, string memory metadata, uint256 donation)",
+  // Post creation and retrieval with signatures
+  "function createPost(string memory _content, string memory _title, string memory _authorDid, string memory _authorName, string memory _contentType, string memory _visibility, string memory _ipfsCid, string memory _metadata, bytes memory _signature) public payable returns (bytes32)",
+  "function getPost(bytes32 _postId) public view returns (string memory content, string memory title, string memory authorDid, string memory authorName, string memory contentType, uint256 timestamp, string memory visibility, string memory ipfsCid, string memory metadata, uint256 donation, bytes memory signature, bool verified)",
   "function getUserPostIds(string memory _authorDid) public view returns (bytes32[] memory)",
   "function getTotalPostsCount() public view returns (uint256)",
   "function getPaginatedPostIds(uint256 _offset, uint256 _limit) public view returns (bytes32[] memory)",
@@ -15,8 +15,14 @@ const blockchainPostsABI = [
   "function setPostFee(uint256 _newFee) public",
   "function setFeeCollector(address _newCollector) public",
   "function getContractCreator() public view returns (address)",
+  // Signature verification functions
+  "function recoverSigner(bytes32 messageHash, bytes memory signature) public pure returns (address)",
+  "function createMessageHash(string memory _content, string memory _title, string memory _authorDid, uint256 _timestamp) public pure returns (bytes32)",
   // Events
-  "event PostCreated(bytes32 indexed postId, string authorDid, uint256 timestamp, string visibility, uint256 donation)",
+  "event PostCreated(bytes32 indexed postId, string authorDid, uint256 timestamp, string visibility, uint256 donation, bool verified)",
+  "event PostVerified(bytes32 indexed postId, address verifier)",
+  "event PostFeeChanged(uint256 newFee)",
+  "event FeeCollectorChanged(address newCollector)",
   "event DonationReceived(bytes32 indexed postId, uint256 donationAmount)"
 ];
 
@@ -80,51 +86,30 @@ export const createBlockchainPost = async (postData, options = {}) => {
       contentType = 'text',
       visibility = 'public',
       ipfsCid = '',
-      metadata = '{}'
+      metadata = '{}',
+      signature = ''
     } = postData;
     
     // Get donation amount if provided
     const donationAmount = options.donationAmount || '0';
     
     // Calculate total transaction value (fee + donation)
-    const feeWei = ethers.BigNumber.from(feeResult.feeWei);
-    const donationWei = ethers.utils.parseEther(donationAmount);
-    const totalValue = feeWei.add(donationWei);
+    const totalValue = ethers.utils.parseEther(feeResult.fee).add(
+      ethers.utils.parseEther(donationAmount)
+    );
     
-    // Get provider to estimate gas and gas price
-    const { provider } = await getProviderAndSigner();
-    
-    // Get current gas price and increase it slightly to avoid replacement
-    const currentGasPrice = await provider.getGasPrice();
-    
-    // For large donations, we need to ensure our gas settings are adequate
-    // Increase gas price by 20% to ensure transaction goes through
-    const gasPrice = currentGasPrice.mul(120).div(100);
-    
-    // Create transaction options with gas settings
+    // Prepare transaction options
     const txOptions = {
       value: totalValue,
-      gasLimit: 600000, // Set a reasonable gas limit
-      gasPrice: gasPrice
+      ...options,
+      gasLimit: options.gasLimit || 500000,
+      maxFeePerGas: options.maxFeePerGas || ethers.utils.parseUnits('20', 'gwei'),
+      maxPriorityFeePerGas: options.maxPriorityFeePerGas || ethers.utils.parseUnits('1.5', 'gwei')
     };
     
-    // If using EIP-1559 compatible network, use maxFeePerGas instead
-    const network = await provider.getNetwork();
-    if (network.chainId !== 31337) { // Not Hardhat local
-      // Use EIP-1559 gas settings
-      const feeData = await provider.getFeeData();
-      if (feeData.maxFeePerGas) {
-        // EIP-1559 is supported
-        delete txOptions.gasPrice;
-        txOptions.maxFeePerGas = feeData.maxFeePerGas.mul(120).div(100);
-        txOptions.maxPriorityFeePerGas = feeData.maxPriorityFeePerGas.mul(120).div(100);
-      }
-    }
-    
-    console.log('Sending transaction with options:', {
+    console.log('Creating blockchain post with options:', {
       value: ethers.utils.formatEther(totalValue),
       ...txOptions,
-      gasPrice: txOptions.gasPrice ? ethers.utils.formatUnits(txOptions.gasPrice, 'gwei') + ' gwei' : undefined,
       maxFeePerGas: txOptions.maxFeePerGas ? ethers.utils.formatUnits(txOptions.maxFeePerGas, 'gwei') + ' gwei' : undefined,
       maxPriorityFeePerGas: txOptions.maxPriorityFeePerGas ? ethers.utils.formatUnits(txOptions.maxPriorityFeePerGas, 'gwei') + ' gwei' : undefined
     });
@@ -133,12 +118,13 @@ export const createBlockchainPost = async (postData, options = {}) => {
     const tx = await contract.createPost(
       content,
       title,
-      authorDid,
+      authorDid, 
       authorName,
       contentType,
       visibility,
       ipfsCid,
       metadata,
+      signature,
       txOptions
     );
     
@@ -151,12 +137,14 @@ export const createBlockchainPost = async (postData, options = {}) => {
     // Try to extract postId from the transaction logs/events
     let postId = null;
     let donationValue = null;
+    let isVerified = false;
     for (const log of receipt.logs) {
       try {
         const parsedLog = contract.interface.parseLog(log);
         if (parsedLog.name === 'PostCreated') {
           postId = parsedLog.args.postId;
           donationValue = parsedLog.args.donation;
+          isVerified = parsedLog.args.verified;
           break;
         }
       } catch (e) {
@@ -170,7 +158,8 @@ export const createBlockchainPost = async (postData, options = {}) => {
       blockNumber: receipt.blockNumber,
       postId: postId || `unknown-${Date.now()}`,
       postIdHex: postId ? ethers.utils.hexlify(postId) : null,
-      donation: donationValue ? ethers.utils.formatEther(donationValue) : donationAmount
+      donation: donationValue ? ethers.utils.formatEther(donationValue) : donationAmount,
+      verified: isVerified
     };
   } catch (error) {
     console.error('Error creating blockchain post:', error);
@@ -189,26 +178,14 @@ export const createBlockchainPost = async (postData, options = {}) => {
 export const getBlockchainPost = async (postId) => {
   try {
     const contract = await getBlockchainPostsContract(false);
-    
-    const [
-      content,
-      title,
-      authorDid,
-      authorName,
-      contentType,
-      timestamp,
-      visibility,
-      ipfsCid,
-      metadata,
-      donation
-    ] = await contract.getPost(postId);
-    
+    const [content, title, authorDid, authorName, contentType, timestamp, visibility, ipfsCid, metadata, donation, signature, verified] = await contract.getPost(postId);
+
     // Convert timestamp from blockchain (seconds) to JS timestamp (milliseconds)
     const jsTimestamp = Number(timestamp) * 1000;
-    
+
     // Convert donation from wei to ETH
     const donationEth = ethers.utils.formatEther(donation);
-    
+
     return {
       success: true,
       post: {
@@ -223,6 +200,8 @@ export const getBlockchainPost = async (postId) => {
         metadata,
         postId,
         donation: donationEth,
+        signature,
+        verified,
         isBlockchainPost: true
       }
     };
@@ -345,12 +324,13 @@ export const checkBalanceForPosting = async () => {
     const balance = await provider.getBalance(userAddress);
     
     // Get required fee
-    const { success, feeWei } = await getBlockchainPostFee();
-    const requiredFee = ethers.BigNumber.from(feeWei || '1000000000000000'); // Fallback to 0.001 ETH
+    const feeResult = await getBlockchainPostFee();
+    if (!feeResult.success) {
+      throw new Error('Failed to get required fee');
+    }
     
-    // Check if user has enough balance (fee + some gas)
-    const gasBuffer = ethers.utils.parseEther('0.002'); // Estimated gas + buffer
-    const requiredTotal = requiredFee.add(gasBuffer);
+    const requiredFee = ethers.utils.parseEther(feeResult.fee);
+    const requiredTotal = requiredFee.add(ethers.utils.parseEther('0.001')); // Add some for gas
     
     const hasBalance = balance.gte(requiredTotal);
     
