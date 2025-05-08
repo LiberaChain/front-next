@@ -6,6 +6,15 @@ import Head from 'next/head';
 import Link from 'next/link';
 import './chat.css';
 import { getUserProfileFromIPFS, searchUserByDid } from '../utils/blockchainTransactions';
+import { 
+  initP2PNode, 
+  subscribeToMessages, 
+  sendMessage as sendP2PMessage,
+  cleanup as cleanupP2P 
+} from '../utils/p2pService';
+import { storeMessage, retrieveMessages } from '../utils/ipfsMessagingService';
+import QRModal from '../components/QRModal';
+import MessageModeSelector from '../components/MessageModeSelector';
 
 // Mocked data for initial demo conversations
 const mockConversations = [
@@ -47,6 +56,13 @@ export default function Home() {
   const [conversations, setConversations] = useState(mockConversations);
   const [initialized, setInitialized] = useState(false);
   const [showingRealFriends, setShowingRealFriends] = useState(false);
+  const [isP2PEnabled, setIsP2PEnabled] = useState(false);
+  const [p2pWarningAcknowledged, setP2pWarningAcknowledged] = useState(false);
+  const [showP2PWarning, setShowP2PWarning] = useState(false);
+  const [p2pPeerId, setP2PPeerId] = useState(null);
+  const [p2pError, setP2PError] = useState(null);
+  const [messageMode, setMessageMode] = useState('standard');
+  const [ipfsError, setIpfsError] = useState(null);
 
   // Check authentication and load user data
   useEffect(() => {
@@ -178,6 +194,69 @@ export default function Home() {
     }
   }, [profileData]);
 
+  // Initialize messaging modes
+  useEffect(() => {
+    const initMessaging = async () => {
+      try {
+        if (messageMode === 'p2p' || messageMode === 'hybrid') {
+          const peerId = await initP2PNode();
+          setP2PPeerId(peerId);
+          
+          if (selectedConversation) {
+            subscribeToMessages(selectedConversation.did || selectedConversation.id, (message) => {
+              setMessages(prev => ({
+                ...prev,
+                [selectedConversation.did || selectedConversation.id]: [
+                  ...(prev[selectedConversation.did || selectedConversation.id] || []),
+                  message
+                ]
+              }));
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Failed to initialize messaging:', err);
+        setP2PError('Failed to initialize P2P messaging');
+      }
+    };
+
+    initMessaging();
+
+    // Cleanup
+    return () => {
+      if (messageMode === 'p2p' || messageMode === 'hybrid') {
+        cleanupP2P();
+      }
+    };
+  }, [messageMode, selectedConversation]);
+
+  // Load IPFS messages when conversation changes
+  useEffect(() => {
+    const loadIPFSMessages = async () => {
+      if (!selectedConversation?.did || (messageMode !== 'ipfs' && messageMode !== 'hybrid')) {
+        return;
+      }
+
+      try {
+        const ipfsMessages = await retrieveMessages(selectedConversation.did);
+        if (ipfsMessages.length > 0) {
+          setMessages(prev => ({
+            ...prev,
+            [selectedConversation.did]: [
+              ...(prev[selectedConversation.did] || []),
+              ...ipfsMessages
+            ]
+          }));
+        }
+      } catch (err) {
+        console.error('Failed to load IPFS messages:', err);
+        setIpfsError('Failed to load encrypted messages from IPFS');
+      }
+    };
+
+    loadIPFSMessages();
+  }, [selectedConversation, messageMode]);
+
   const handleConversationClick = (conversation) => {
     setSelectedConversation(conversation);
     setIsToggled(!isToggled);
@@ -194,83 +273,103 @@ export default function Home() {
     }
   };
 
-  const handleSendMessage = (e) => {
+  // Update handleSendMessage to support both modes
+  const handleSendMessage = async (e) => {
     e.preventDefault();
     if (messageInput.trim() && selectedConversation) {
       // Create new message
       const newMessage = {
-        id: Date.now(), // Unique ID based on timestamp
+        id: Date.now(),
         sender: 'You',
         text: messageInput,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
-      // Update the messages state
-      setMessages((prevMessages) => {
-        // If this is a friend with a DID, store in localStorage
-        if (selectedConversation.did) {
+      try {
+        // Send via P2P if enabled
+        if (messageMode === 'p2p' || messageMode === 'hybrid') {
+          const targetPeerId = selectedConversation.peerId;
+          if (!targetPeerId) {
+            throw new Error('No peer ID available for this conversation');
+          }
+          await sendP2PMessage(targetPeerId, messageInput);
+        }
+
+        // Store in IPFS if enabled
+        if (messageMode === 'ipfs' || messageMode === 'hybrid') {
+          if (!selectedConversation.did) {
+            throw new Error('Cannot store encrypted message: No DID available');
+          }
+          const result = await storeMessage(selectedConversation.did, messageInput);
+          if (!result.success) {
+            throw new Error(result.error || 'Failed to store encrypted message');
+          }
+        }
+
+        // Update UI
+        setMessages((prevMessages) => {
+          const conversationId = selectedConversation.did || selectedConversation.id;
           const updatedMessages = {
             ...prevMessages,
-            [selectedConversation.did]: [
-              ...(prevMessages[selectedConversation.did] || []),
+            [conversationId]: [
+              ...(prevMessages[conversationId] || []),
               newMessage
             ]
           };
           
-          // Only store real friends' messages in localStorage
-          const realFriendsMessages = {};
-          friendsList.forEach(friend => {
-            if (updatedMessages[friend.did]) {
-              realFriendsMessages[friend.did] = updatedMessages[friend.did];
-            }
-          });
-          localStorage.setItem('liberaChainMessages', JSON.stringify(realFriendsMessages));
+          // Only store standard mode messages in localStorage
+          if (messageMode === 'standard') {
+            const realFriendsMessages = {};
+            friendsList.forEach(friend => {
+              if (updatedMessages[friend.did]) {
+                realFriendsMessages[friend.did] = updatedMessages[friend.did];
+              }
+            });
+            localStorage.setItem('liberaChainMessages', JSON.stringify(realFriendsMessages));
+          }
           
           return updatedMessages;
+        });
+        
+        // Update conversation preview
+        if (selectedConversation.did) {
+          setFriendsList((prevFriends) => 
+            prevFriends.map((friend) => {
+              if (friend.did === selectedConversation.did) {
+                return {
+                  ...friend,
+                  lastMessage: messageInput,
+                  timestamp: 'Just now'
+                };
+              }
+              return friend;
+            })
+          );
         } else {
-          // For demo conversations, just update the state
-          return {
-            ...prevMessages,
-            [selectedConversation.id]: [
-              ...(prevMessages[selectedConversation.id] || []),
-              newMessage
-            ]
-          };
+          setConversations((prevConversations) => 
+            prevConversations.map((conv) => {
+              if (conv.id === selectedConversation.id) {
+                return {
+                  ...conv,
+                  lastMessage: messageInput,
+                  timestamp: 'Just now'
+                };
+              }
+              return conv;
+            })
+          );
         }
-      });
-      
-      // Update the conversation's lastMessage
-      if (selectedConversation.did) {
-        // For real friends
-        setFriendsList((prevFriends) => 
-          prevFriends.map((friend) => {
-            if (friend.did === selectedConversation.did) {
-              return {
-                ...friend,
-                lastMessage: messageInput,
-                timestamp: 'Just now'
-              };
-            }
-            return friend;
-          })
-        );
-      } else {
-        // For demo conversations
-        setConversations((prevConversations) => 
-          prevConversations.map((conv) => {
-            if (conv.id === selectedConversation.id) {
-              return {
-                ...conv,
-                lastMessage: messageInput,
-                timestamp: 'Just now'
-              };
-            }
-            return conv;
-          })
-        );
+      } catch (error) {
+        console.error('Failed to send message:', error);
+        if (messageMode === 'p2p' || messageMode === 'hybrid') {
+          setP2PError(error.message);
+        }
+        if (messageMode === 'ipfs' || messageMode === 'hybrid') {
+          setIpfsError(error.message);
+        }
       }
 
-      // Reset the input field
+      // Reset input
       setMessageInput('');
     }
   };
@@ -284,6 +383,22 @@ export default function Home() {
   // Handle case when a user has no friends yet
   const handleAddFriends = () => {
     router.push('/dashboard');
+  };
+
+  // P2P mode toggle handler
+  const handleP2PToggle = () => {
+    if (!isP2PEnabled && !p2pWarningAcknowledged) {
+      setShowP2PWarning(true);
+    } else {
+      setIsP2PEnabled(!isP2PEnabled);
+    }
+  };
+
+  // P2P warning acknowledgment handler
+  const acknowledgeP2PWarning = () => {
+    setP2pWarningAcknowledged(true);
+    setShowP2PWarning(false);
+    setIsP2PEnabled(true);
   };
 
   if (loadingFriends || !initialized) {
@@ -312,22 +427,62 @@ export default function Home() {
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
-      {qrIsVisible ? (
-        <div className='w-8/10 h-8/10 md:w-120 md:h-120 top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-transparent-400 rounded-2xl absolute
-        z-100 flex flex-col justify-start items-center bg-gray-800/80 backdrop-blur gap-20'>
-          
-          <div className='h-5 md:h-1/10 w-full rounded-2xl bg-transparent flex justify-end p-2 relative'>
-            <button onClick={() => {setQrIsVisible(false)}} className='hover:cursor-pointer'>
-              <img src={'/x.svg'} className='absolute w-5 md:w-9 top-1 right-1 md:top-2 md:right-2'></img>
-            </button>
-          </div>
-          
-          <div className='w-full h-6/10 md:h-8/10 flex items-center justify-center p-2'>
-            <img src={'/qr.png'} className='w-full h-full object-contain'></img>
+      {/* P2P Warning Modal */}
+      {showP2PWarning && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 p-6 rounded-lg max-w-md w-full">
+            <h3 className="text-xl font-bold text-white mb-4">Enable P2P Messaging</h3>
+            <p className="text-gray-300 mb-4">
+              When using peer-to-peer messaging:
+              <ul className="list-disc pl-5 mt-2 space-y-1">
+                <li>Messages are stored only on your device</li>
+                <li>Messages cannot be recovered if lost</li>
+                <li>Communication is direct between peers</li>
+                <li>No message history is preserved on the blockchain</li>
+              </ul>
+            </p>
+            <div className="flex justify-end space-x-4">
+              <button
+                onClick={() => setShowP2PWarning(false)}
+                className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={acknowledgeP2PWarning}
+                className="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700"
+              >
+                Enable P2P
+              </button>
+            </div>
           </div>
         </div>
-      ) : (
-        <div></div>
+      )}
+
+      {/* Error Notification */}
+      {p2pError && (
+        <div className="fixed top-4 right-4 bg-red-600 text-white px-4 py-2 rounded shadow-lg">
+          {p2pError}
+          <button 
+            onClick={() => setP2PError(null)}
+            className="ml-2 text-white hover:text-gray-200"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* IPFS Error Notification */}
+      {ipfsError && (
+        <div className="fixed top-16 right-4 bg-orange-600 text-white px-4 py-2 rounded shadow-lg">
+          {ipfsError}
+          <button 
+            onClick={() => setIpfsError(null)}
+            className="ml-2 text-white hover:text-gray-200"
+          >
+            ✕
+          </button>
+        </div>
       )}
 
       {/* Sidebar: Conversation List */}
@@ -337,12 +492,15 @@ export default function Home() {
             <img src={'/logo.svg'} width={25} alt="LiberaChain Logo" />
           </Link>
           <h1 className="text-xl font-semibold text-white">Chats</h1>
-          <div className='flex justify-center items-center gap-2'>
+          <div className="flex items-center gap-2">
+            <MessageModeSelector
+              mode={messageMode}
+              onChange={setMessageMode}
+            />
             <button className='block hover:cursor-pointer'
-            onClick={() => {setQrIsVisible(true)}}>
+              onClick={() => {setQrIsVisible(true)}}>
               <img src={'/qr.svg'} alt="QR Code" />
             </button>
-
             <button className="block md:hidden hover:cursor-pointer" onClick={() => {
               setIsToggled(!isToggled)
             }}>
@@ -507,6 +665,13 @@ export default function Home() {
           </div>
         )}
       </div>
+
+      <QRModal
+        isVisible={qrIsVisible}
+        onClose={() => setQrIsVisible(false)}
+        p2pEnabled={isP2PEnabled}
+        peerId={p2pPeerId}
+      />
     </div>
   );
 }
