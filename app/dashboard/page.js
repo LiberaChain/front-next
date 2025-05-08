@@ -19,6 +19,7 @@ import { hasIpfsCredentials, getIpfsStatus } from '../utils/ipfsService';
 import PublicKeyManager from '../components/blockchain/PublicKeyManager';
 import { QRCodeCanvas } from 'qrcode.react';
 import { Html5Qrcode } from 'html5-qrcode';
+import QRCodeGenerator from '../components/QRCodeGenerator';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -688,7 +689,7 @@ export default function Dashboard() {
                   className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
                   </svg>
                   Go to Chats
                 </Link>
@@ -1070,6 +1071,17 @@ export default function Dashboard() {
                 <p className="text-sm text-gray-300 mt-1">{friendRequestResult.error}</p>
               </div>
             )}
+          </div>
+          
+          {/* Create QR Code Section */}
+          <div className="mt-8">
+            <h2 className="text-lg font-medium text-white mb-4">Create Location/Object QR Codes</h2>
+            <p className="text-sm text-gray-400 mb-6">
+              Generate QR codes for locations or objects that others can scan and associate with posts. 
+              Each QR code contains a private key secured by public key cryptography and verified through IPFS.
+            </p>
+            
+            <QRCodeGenerator />
           </div>
         </div>
       </main>

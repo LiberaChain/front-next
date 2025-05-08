@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -20,6 +20,7 @@ import {
 } from '../utils/postsService';
 
 import { createBlockchainPost } from '../utils/blockchainPostsService';
+import { verifyLocationQRCode } from '../utils/qrCodeService';
 
 export default function PostsPage() {
   const router = useRouter();
@@ -31,6 +32,14 @@ export default function PostsPage() {
   const [success, setSuccess] = useState('');
   const [refreshInterval, setRefreshInterval] = useState(null);
   const [lastRefresh, setLastRefresh] = useState(Date.now());
+  
+  // QR Code scanning
+  const scannerRef = useRef(null);
+  const [showQrScanner, setShowQrScanner] = useState(false);
+  const [scannerInitialized, setScannerInitialized] = useState(false);
+  const [scannedLocationDid, setScannedLocationDid] = useState('');
+  const [scannedLocationName, setScannedLocationName] = useState('');
+  const [locationInfo, setLocationInfo] = useState(null);
   
   // For post creation
   const [postContent, setPostContent] = useState('');
@@ -228,6 +237,17 @@ export default function PostsPage() {
         visibility: postVisibility
       };
       
+      // Add location data if available
+      if (scannedLocationDid) {
+        postData.locationDid = scannedLocationDid;
+        postData.locationName = scannedLocationName;
+        
+        // Add additional location metadata if available
+        if (locationInfo) {
+          postData.locationInfo = locationInfo;
+        }
+      }
+      
       // Choose storage method based on user selection
       if (postStorage === 'blockchain') {
         // Add donation amount if applicable
@@ -249,6 +269,9 @@ export default function PostsPage() {
         setPostVisibility('public');
         setDonationAmount('0');
         setSelectedDonationPreset('');
+        setScannedLocationDid('');
+        setScannedLocationName('');
+        setLocationInfo(null);
         
         // Include donation information in success message if applicable
         let successMsg = `Post published successfully to blockchain! Transaction: ${blockchainResult.transactionHash.substring(0, 10)}...`;
@@ -269,7 +292,9 @@ export default function PostsPage() {
           authorDid: profileData.did,
           authorName: profileData.displayName || `User-${profileData.wallet?.substring(2, 8)}`,
           visibility: postVisibility,
-          contentPreview: postContent.substring(0, 100) + (postContent.length > 100 ? '...' : '')
+          contentPreview: postContent.substring(0, 100) + (postContent.length > 100 ? '...' : ''),
+          locationDid: scannedLocationDid || null,
+          locationName: scannedLocationName || null
         });
         
         if (!metadataResult) {
@@ -280,6 +305,9 @@ export default function PostsPage() {
         setPostTitle('');
         setPostContent('');
         setPostVisibility('public');
+        setScannedLocationDid('');
+        setScannedLocationName('');
+        setLocationInfo(null);
         setSuccess('Post published successfully to IPFS!');
       }
       
@@ -513,7 +541,7 @@ export default function PostsPage() {
       case 'instagram':
         return (
           <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 0C8.74 0 8.333.015 7.053.072 5.775.132 4.905.333 4.14.63c-.789.306-1.459.717-2.126 1.384S.935 3.35.63 4.14C.333 4.905.131 5.775.072 7.053.012 8.333 0 8.74 0 12s.015 3.667.072 4.947c.06 1.277.261 2.148.558 2.913.306.788.717 1.459 1.384 2.126.667.666 1.336 1.079 2.126 1.384.766.296 1.636.499 2.913.558C8.333 23.988 8.74 24 12 24s3.667-.015 4.947-.072c1.277-.06 2.148-.262 2.913-.558.788-.306 1.459-.718 2.126-1.384.666-.667 1.079-1.335 1.384-2.126.296-.765.499-1.636.558-2.913.06-1.28.072-1.687.072-4.947s-.015-3.667-.072-4.947c-.06-1.277-.262-2.149-.558-2.913-.306-.789-.718-1.459-1.384-2.126C21.319 1.347 20.651.935 19.86.63c-.765-.297-1.636-.499-2.913-.558C15.667.012 15.26 0 12 0zm0 2.16c3.203 0 3.585.016 4.85.071 1.17.055 1.805.249 2.227.415.562.217.96.477 1.382.896.419.42.679.819.896 1.381.164.422.36 1.057.413 2.227.057 1.266.07 1.646.07 4.85s-.015 3.585-.074 4.85c-.061 1.17-.256 1.805-.421 2.227-.224.562-.479.96-.899 1.382-.419.419-.824.679-1.38.896-.42.164-1.065.36-2.235.413-1.274.057-1.649.07-4.859.07-3.211 0-3.586-.015-4.859-.074-1.171-.061-1.816-.256-2.236-.421-.569-.224-.96-.479-1.379-.899-.421-.419-.69-.824-.9-1.38-.165-.42-.359-1.065-.42-2.235-.045-1.26-.061-1.649-.061-4.844 0-3.196.016-3.586.061-4.861.061-1.17.255-1.814.42-2.234.21-.57.479-.96.9-1.381.419-.419.81-.689 1.379-.898.42-.166 1.051-.361 2.221-.421 1.275-.045 1.65-.06 4.859-.06l.045.03zm0 3.678c-3.405 0-6.162 2.76-6.162 6.162 0 3.405 2.76 6.162 6.162 6.162 3.405 0 6.162-2.76 6.162-6.162 0-3.405-2.76-6.162-6.162-6.162zM12 16c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm7.846-10.405c0 .795-.646 1.44-1.44 1.44-.795 0-1.44-.646-1.44-1.44 0-.794.646-1.439 1.44-1.439.793-.001 1.44.645 1.44 1.439z" />
+            <path d="M12 0C8.74 0 8.333.015 7.053.072 5.775.132 4.905.333 4.14.63c-.789.306-1.459.717-2.126 1.384S.935 3.35.63 4.14C.333 4.905.131 5.775.072 7.053.012 8.333 0 8.74 0 12s.015 3.667.072 4.947c.06 1.277.261 2.148.558 2.913.306.788.717 1.459 1.384 2.126.667.666 1.336 1.079 2.126 1.384.766.296 1.636.499 2.913.558C8.333 23.988 8.74 24 12 24s3.667-.015 4.947-.072c1.277-.06 2.148-.262 2.913-.558.788-.306 1.459-.718 2.126-1.384.666-.667 1.079-1.335 1.384-2.126.296-.765.499-1.636.558-2.913.06-1.28.072-1.687.072-4.947s-.015-3.667-.072-4.947c-.06-1.277-.261-2.149-.558-2.913-.306-.789-.718-1.459-1.384-2.126C21.319 1.347 20.651.935 19.86.63c-.765-.297-1.636-.499-2.913-.558C15.667.012 15.26 0 12 0zm0 2.16c3.203 0 3.585.016 4.85.071 1.17.055 1.805.249 2.227.415.562.217.96.477 1.382.896.419.42.679.819.896 1.381.164.422.36 1.057.413 2.227.057 1.266.07 1.646.07 4.85s-.015 3.585-.074 4.85c-.061 1.17-.256 1.805-.421 2.227-.224.562-.479.96-.899 1.382-.419.419-.824.679-1.38.896-.42.164-1.065.36-2.235.413-1.274.057-1.649.07-4.859.07-3.211 0-3.586-.015-4.859-.074-1.171-.061-1.816-.256-2.236-.421-.569-.224-.96-.479-1.379-.899-.421-.419-.69-.824-.9-1.38-.165-.42-.359-1.065-.42-2.235-.045-1.26-.061-1.649-.061-4.844 0-3.196.016-3.586.061-4.861.061-1.17.255-1.814.42-2.234.21-.57.479-.96.9-1.381.419-.419.81-.689 1.379-.898.42-.166 1.051-.361 2.221-.421 1.275-.045 1.65-.06 4.859-.06l.045.03zm0 3.678c-3.405 0-6.162 2.76-6.162 6.162 0 3.405 2.76 6.162 6.162 6.162 3.405 0 6.162-2.76 6.162-6.162 0-3.405-2.76-6.162-6.162-6.162zM12 16c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm7.846-10.405c0 .795-.646 1.44-1.44 1.44-.795 0-1.44-.646-1.44-1.44 0-.794.646-1.439 1.44-1.439.793-.001 1.44.645 1.44 1.439z" />
           </svg>
         );
       case 'linkedin':
@@ -531,6 +559,221 @@ export default function PostsPage() {
         );
     }
   };
+
+  // Toggle QR Scanner
+  const toggleQrScanner = () => {
+    if (showQrScanner) {
+      stopQrScanner();
+    } else {
+      setShowQrScanner(true);
+      // Start scanning after the component is rendered
+      setTimeout(() => {
+        startQrScanner();
+      }, 500);
+    }
+  };
+
+  // Start QR code scanning
+  const startQrScanner = async () => {
+    if (!scannerRef.current) return;
+    
+    try {
+      await scannerRef.current.start(
+        { facingMode: "environment" },
+        async (decodedText) => {
+          // Try to parse the scanned data as JSON first (for cryptographically secured QR codes)
+          try {
+            const qrData = JSON.parse(decodedText);
+            
+            // If this is a location QR code with privateKey and locationDid
+            if (qrData && qrData.privateKey && qrData.locationDid) {
+              // Stop scanning once we've found a valid QR code
+              await scannerRef.current.stop();
+              setShowQrScanner(false);
+              
+              // Show processing indicator
+              setSuccess("Verifying location data...");
+              
+              try {
+                // Verify the QR code cryptographically
+                const verificationResult = await verifyLocationQRCode(qrData);
+                
+                if (verificationResult.isValid && verificationResult.locationData) {
+                  // Set the scanned location information
+                  setScannedLocationDid(qrData.locationDid);
+                  setScannedLocationName(verificationResult.locationData.locationName);
+                  
+                  // Set additional location metadata if available
+                  const locationInfo = {
+                    coordinates: verificationResult.locationData.coordinates,
+                    orgDid: verificationResult.locationData.orgDid,
+                    reward: verificationResult.locationData.reward,
+                    type: verificationResult.locationData.type,
+                    verified: true,
+                    timestamp: qrData.timestamp,
+                    ipfsCid: verificationResult.locationData.ipfsCid
+                  };
+                  
+                  setLocationInfo(locationInfo);
+                  
+                  // Show success notification
+                  setSuccess(`Successfully verified ${locationInfo.type || 'location'}: ${verificationResult.locationData.locationName}`);
+                  setTimeout(() => setSuccess(''), 3000);
+                } else {
+                  // Failed verification
+                  setError(`Verification failed: ${verificationResult.error || 'Invalid location QR code'}`);
+                  setTimeout(() => setError(''), 3000);
+                }
+              } catch (verifyError) {
+                console.error("Error verifying location QR code:", verifyError);
+                setError(`Verification error: ${verifyError.message}`);
+                setTimeout(() => setError(''), 3000);
+              }
+              
+              return;
+            }
+          } catch (jsonError) {
+            // Not JSON data, continue to check if it's a DID string
+            console.log("QR code is not JSON data, checking if it's a DID string");
+          }
+          
+          // Check for regular DID format strings (for backward compatibility)
+          if (decodedText && decodedText.startsWith('did:ethr:')) {
+            // Stop scanning once we've found a valid DID
+            scannerRef.current.stop().then(() => {
+              setShowQrScanner(false);
+              
+              try {
+                // Parse the location DID
+                const didParts = decodedText.split(':');
+                if (didParts.length >= 4) {
+                  const locationType = didParts[2];
+                  
+                  // Check if this is a location DID
+                  if (locationType === 'location' || locationType === 'object') {
+                    // Extract location name if available
+                    const locationName = didParts.length > 3 ? didParts[3] : 'Unknown location';
+                    
+                    // Set the scanned location information
+                    setScannedLocationDid(decodedText);
+                    setScannedLocationName(locationName.replace(/-/g, ' '));
+                    
+                    // Check if there's any additional metadata in the DID
+                    let locationInfo = {};
+                    if (didParts.length > 4) {
+                      try {
+                        // Additional metadata might be encoded in the DID
+                        const coordinates = didParts[4]; // Might contain lat,long
+                        const orgDid = didParts.length > 5 ? didParts[5] : null; // Organization DID
+                        const reward = didParts.length > 6 ? didParts[6] : null; // Potential reward
+                        
+                        locationInfo = {
+                          coordinates,
+                          orgDid,
+                          reward,
+                          verified: false // Legacy QR codes aren't cryptographically verified
+                        };
+                        
+                        setLocationInfo(locationInfo);
+                      } catch (err) {
+                        console.error("Error parsing location metadata:", err);
+                      }
+                    }
+                    
+                    // Show success notification
+                    setSuccess(`Scanned ${locationType}: ${locationName.replace(/-/g, ' ')}`);
+                    setTimeout(() => setSuccess(''), 3000);
+                  } else {
+                    // Not a location/object DID
+                    setError("This QR code is not a location or object identifier");
+                    setTimeout(() => setError(''), 3000);
+                  }
+                } else {
+                  throw new Error("Invalid DID format");
+                }
+              } catch (err) {
+                console.error("Error processing location DID:", err);
+                setError("Invalid location QR code format");
+                setTimeout(() => setError(''), 3000);
+              }
+            }).catch(console.error);
+          } else {
+            // Not a recognizable QR code format
+            console.error("Unrecognized QR code format:", decodedText);
+            setError("Unrecognized QR code format");
+            setTimeout(() => setError(''), 3000);
+          }
+        },
+        (errorMessage) => {
+          console.error("QR Scan error:", errorMessage);
+        }
+      ).catch((err) => {
+        console.error("Failed to start scanning:", err);
+      });
+    } catch (error) {
+      console.error("Error starting QR scanner:", error);
+    }
+  };
+
+  // Stop QR code scanning
+  const stopQrScanner = () => {
+    if (scannerRef.current && scannerRef.current.isScanning) {
+      scannerRef.current.stop().then(() => {
+        console.log("QR Scanner stopped");
+      }).catch(console.error);
+    }
+    setShowQrScanner(false);
+  };
+
+  // Clear scanned location
+  const clearScannedLocation = () => {
+    setScannedLocationDid('');
+    setScannedLocationName('');
+    setLocationInfo(null);
+  };
+
+  // Initialize QR scanner when showQrScanner changes
+  useEffect(() => {
+    if (showQrScanner && !scannerInitialized) {
+      // Initialize HTML5 QR Scanner
+      const initScanner = async () => {
+        try {
+          // Import the HTML5 QR scanner library dynamically
+          const { Html5QrcodeScanner } = await import('html5-qrcode');
+          
+          // Create scanner instance if not already initialized
+          if (!scannerRef.current) {
+            scannerRef.current = new Html5QrcodeScanner(
+              "location-qr-reader",
+              { 
+                fps: 10, 
+                qrbox: 250,
+                rememberLastUsedCamera: true,
+                aspectRatio: 1.0
+              }
+            );
+            
+            setScannerInitialized(true);
+            console.log("QR scanner initialized");
+            
+            // Start scanning automatically
+            startQrScanner();
+          }
+        } catch (error) {
+          console.error("Error initializing QR scanner:", error);
+        }
+      };
+      
+      initScanner();
+    }
+
+    // Cleanup scanner on unmount
+    return () => {
+      if (scannerRef.current && scannerRef.current.isScanning) {
+        scannerRef.current.stop().catch(console.error);
+      }
+    };
+  }, [showQrScanner, scannerInitialized]);
 
   return (
     <div className="animate-gradient min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 pb-10">
@@ -763,6 +1006,90 @@ export default function PostsPage() {
                       )}
                     </div>
                   )}
+                  
+                  <div className="mt-4">
+                    <div className="flex justify-between items-center mb-2">
+                      <label className="block text-sm font-medium text-gray-300">
+                        Location/Object
+                      </label>
+                      <button
+                        type="button"
+                        onClick={toggleQrScanner}
+                        className={`text-xs px-3 py-1 rounded-md ${
+                          showQrScanner
+                            ? 'bg-red-600 text-white'
+                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                        }`}
+                      >
+                        {showQrScanner ? 'Cancel Scanning' : 'Scan QR Code'}
+                      </button>
+                    </div>
+                    
+                    {/* QR Scanner */}
+                    {showQrScanner && (
+                      <div className="mt-2 bg-gray-700 rounded-lg p-4">
+                        <h3 className="text-md font-medium text-white mb-2">Scan Location/Object QR Code</h3>
+                        <p className="text-sm text-gray-400 mb-4">
+                          Point your camera at a location or object QR code to associate it with your post
+                        </p>
+                        <div id="location-qr-reader" className="w-full mx-auto bg-black rounded-lg overflow-hidden"></div>
+                      </div>
+                    )}
+                    
+                    {/* Scanned Location Info */}
+                    {scannedLocationDid && !showQrScanner && (
+                      <div className="mt-2 bg-gray-700 rounded-lg p-4 border border-emerald-800">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h3 className="text-md font-medium text-emerald-400 mb-1">{scannedLocationName}</h3>
+                            <p className="text-xs text-gray-400">
+                              {scannedLocationDid.substring(0, 15)}...{scannedLocationDid.substring(scannedLocationDid.length - 6)}
+                            </p>
+                            
+                            {locationInfo && (
+                              <div className="mt-2 text-xs">
+                                {locationInfo.coordinates && (
+                                  <p className="text-gray-300">
+                                    <span className="text-gray-400">Coordinates:</span> {locationInfo.coordinates}
+                                  </p>
+                                )}
+                                
+                                {locationInfo.orgDid && (
+                                  <p className="text-gray-300">
+                                    <span className="text-gray-400">Organization:</span> {locationInfo.orgDid.substring(0, 15)}...
+                                  </p>
+                                )}
+                                
+                                {locationInfo.reward && (
+                                  <p className="text-emerald-400 font-medium mt-1">
+                                    <span className="text-emerald-500">💰 Reward available:</span> {locationInfo.reward}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          
+                          <button
+                            type="button"
+                            onClick={clearScannedLocation}
+                            className="text-xs text-red-400 hover:text-red-300"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {!scannedLocationDid && !showQrScanner && (
+                      <div className="mt-2 bg-gray-700 rounded-lg p-4 border border-gray-600">
+                        <p className="text-sm text-gray-400 italic">
+                          No location/object associated with this post. Scan a QR code to add one.
+                        </p>
+                      </div>
+                    )}
+                  </div>
                   
                   <div>
                     <button
@@ -1033,6 +1360,68 @@ export default function PostsPage() {
                         <div className="mt-3 text-gray-200 whitespace-pre-line">
                           {post.content}
                         </div>
+                        
+                        {/* Location Information */}
+                        {post.locationDid && (
+                          <div className="mt-3 bg-gray-800/50 rounded-md p-3 border border-emerald-800/50">
+                            <div className="flex items-start">
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-emerald-400 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                              </svg>
+                              <div>
+                                <div className="flex items-center">
+                                  <span className="text-sm font-medium text-emerald-400">{post.locationName || 'Location'}</span>
+                                  {post.locationInfo && post.locationInfo.verified && (
+                                    <span className="ml-2 px-1.5 py-0.5 text-xs bg-green-900/40 text-green-400 rounded-sm flex items-center">
+                                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                      </svg>
+                                      Verified
+                                    </span>
+                                  )}
+                                  <span className="ml-2 text-xs text-gray-500">
+                                    {post.locationDid?.substring(0, 10)}...
+                                  </span>
+                                </div>
+                                
+                                {post.locationInfo && (
+                                  <div className="mt-1 text-xs">
+                                    {post.locationInfo.type && post.locationInfo.type !== 'location' && (
+                                      <p className="text-gray-400 capitalize">
+                                        <span className="text-gray-500">Type:</span> {post.locationInfo.type}
+                                      </p>
+                                    )}
+                                    
+                                    {post.locationInfo.coordinates && (
+                                      <p className="text-gray-400">
+                                        <span className="text-gray-500">Coordinates:</span> {post.locationInfo.coordinates}
+                                      </p>
+                                    )}
+                                    
+                                    {post.locationInfo.orgDid && (
+                                      <p className="text-gray-400">
+                                        <span className="text-gray-500">Organization:</span> {post.locationInfo.orgDid.substring(0, 15)}...
+                                      </p>
+                                    )}
+                                    
+                                    {post.locationInfo.reward && (
+                                      <p className="text-emerald-400 font-medium">
+                                        <span className="text-emerald-500">💰 Reward available:</span> {post.locationInfo.reward}
+                                      </p>
+                                    )}
+                                    
+                                    {post.locationInfo.ipfsCid && (
+                                      <p className="text-blue-400 mt-1 text-xs">
+                                        <span className="text-gray-500">IPFS:</span> {post.locationInfo.ipfsCid.substring(0, 12)}...
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                         
                         {post.type === 'imported' && post.url && (
                           <div className="mt-4 bg-gray-800/50 rounded-md p-3 border border-gray-600">
