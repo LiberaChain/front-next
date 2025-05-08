@@ -3,7 +3,7 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "react-hot-toast";
-import { StateProvider } from "./components/StateContext";
+import { StateProvider } from "./_components/StateContext";
 // import { Inter } from "next/font/google";
 import { usePathname } from "next/navigation";
 

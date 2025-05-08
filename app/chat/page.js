@@ -13,8 +13,8 @@ import {
   cleanup as cleanupP2P 
 } from '../utils/p2pService';
 import { storeMessage, retrieveMessages } from '../utils/ipfsMessagingService';
-import QRModal from '../components/QRModal';
-import MessageModeSelector from '../components/MessageModeSelector';
+import QRModal from '../_components/QRModal';
+import MessageModeSelector from '../_components/MessageModeSelector';
 
 // Mocked data for initial demo conversations
 const mockConversations = [

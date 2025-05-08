@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import Image from 'next/image';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   initializeProviders,
   checkUserRegistration,
@@ -11,23 +11,26 @@ import {
   signChallenge,
   verifySignature,
   generateChallenge,
-  storeAuthInLocalStorage
-} from './utils/loginUtils';
-import LoginStart from './components/step-0-start';
-import DidVerification from './components/step-1-verify';
-import LoginSuccess from './components/step-2-success';
+  storeAuthInLocalStorage,
+} from "./_utils/loginUtils";
+import LoginStart from "./_components/step-0-start";
+import DidVerification from "./_components/step-1-verify";
+import LoginSuccess from "./_components/step-2-success";
 
 export default function Login() {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [didChallenge, setDidChallenge] = useState('');
+  const [error, setError] = useState("");
+  const [didChallenge, setDidChallenge] = useState("");
   const [isWalletConnected, setIsWalletConnected] = useState(false);
-  const [userDid, setUserDid] = useState('');
-  const [walletAddress, setWalletAddress] = useState('');
-  const [blockchainVerification, setBlockchainVerification] = useState({ verified: false, checking: false });
-  
+  const [userDid, setUserDid] = useState("");
+  const [walletAddress, setWalletAddress] = useState("");
+  const [blockchainVerification, setBlockchainVerification] = useState({
+    verified: false,
+    checking: false,
+  });
+
   // Initialize providers when component mounts
   useEffect(() => {
     initializeProviders();
@@ -44,7 +47,7 @@ export default function Login() {
   const handleConnectWallet = async () => {
     try {
       setLoading(true);
-      setError('');
+      setError("");
 
       const { did, address } = await connectWallet();
       setUserDid(did);
@@ -57,14 +60,16 @@ export default function Login() {
       setBlockchainVerification(verification);
 
       if (!verification.verified) {
-        setError('Your account is not registered on the blockchain. Redirecting to registration...');
+        setError(
+          "Your account is not registered on the blockchain. Redirecting to registration..."
+        );
         setTimeout(() => {
-          router.push('/registration');
+          router.push("/registration");
         }, 2000);
         return;
       }
     } catch (err) {
-      setError(err.message || 'Failed to connect wallet');
+      setError(err.message || "Failed to connect wallet");
     } finally {
       setLoading(false);
     }
@@ -79,20 +84,26 @@ export default function Login() {
 
     try {
       setLoading(true);
-      setError('');
+      setError("");
 
       // Verify registration if not already verified
       if (!blockchainVerification.verified) {
         const verification = await checkUserRegistration(userDid);
         setBlockchainVerification(verification);
         if (!verification.verified) {
-          throw new Error("Account not found on blockchain. Please register first.");
+          throw new Error(
+            "Account not found on blockchain. Please register first."
+          );
         }
       }
 
       // Sign and verify the challenge
       const signature = await signChallenge(didChallenge);
-      const isValid = await verifySignature(didChallenge, signature, walletAddress);
+      const isValid = await verifySignature(
+        didChallenge,
+        signature,
+        walletAddress
+      );
 
       if (!isValid) {
         throw new Error("Signature verification failed");
@@ -103,10 +114,10 @@ export default function Login() {
       setStep(2);
 
       // Navigate after successful verification
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      router.push('/dashboard');
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      router.push("/dashboard");
     } catch (err) {
-      setError(`DID verification failed: ${err.message || 'Unknown error'}`);
+      setError(`DID verification failed: ${err.message || "Unknown error"}`);
     } finally {
       setLoading(false);
     }
@@ -121,7 +132,13 @@ export default function Login() {
     <div className="animate-gradient min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
-          <Image src="/logo.svg" alt="LiberaChain Logo" width={80} height={80} className="mx-auto" />
+          <Image
+            src="/logo.svg"
+            alt="LiberaChain Logo"
+            width={80}
+            height={80}
+            className="mx-auto"
+          />
         </div>
         <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-white">
           Sign in with your DID
@@ -142,7 +159,7 @@ export default function Login() {
           )}
 
           {step === 0 && (
-            <LoginStart 
+            <LoginStart
               onConnectWallet={() => {
                 setStep(1);
                 handleConnectWallet();
@@ -168,12 +185,17 @@ export default function Login() {
 
           {/* Footer info */}
           <div className="mt-6">
-            <p className="text-center text-xs text-gray-500">
-              Don&apos;t have a DID yet?{' '}
-              <Link href="/registration" className="text-emerald-500 hover:text-emerald-400">
-                Create your decentralized identity
-              </Link>
+            <p className="text-center text-sm text-gray-300">
+              Don&apos;t have a DID yet?
             </p>
+            <Link href="/registration" className="mt-2 block">
+              <button
+                type="button"
+                className="inline-flex w-full justify-center rounded-md border border-emerald-500 py-2 px-4 text-sm font-medium text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-400 hover:border-emerald-400 transition-colors duration-200 focus:outline-none cursor-pointer"
+              >
+                Create your decentralized identity
+              </button>
+            </Link>
           </div>
         </div>
       </div>
