@@ -29,6 +29,7 @@ import {
 import PublicKeyManager from '../components/blockchain/PublicKeyManager';
 import { QRCodeCanvas } from 'qrcode.react';
 import { Html5Qrcode } from 'html5-qrcode';
+import QRCodeGenerator from '../components/QRCodeGenerator';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -1456,6 +1457,17 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
+          </div>
+          
+          {/* Create QR Code Section */}
+          <div className="mt-8">
+            <h2 className="text-lg font-medium text-white mb-4">Create Location/Object QR Codes</h2>
+            <p className="text-sm text-gray-400 mb-6">
+              Generate QR codes for locations or objects that others can scan and associate with posts. 
+              Each QR code contains a private key secured by public key cryptography and verified through IPFS.
+            </p>
+            
+            <QRCodeGenerator />
           </div>
         </div>
       </main>
