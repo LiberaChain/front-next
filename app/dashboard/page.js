@@ -13,9 +13,19 @@ import {
   storeUserProfileInIPFS,
   getUserProfileFromIPFS,
   setUserNameForDID,
-  getBlockchainStatus
+  getBlockchainStatus,
+  checkPendingFriendRequests,
+  acceptFriendRequest,
+  rejectFriendRequest,
+  getAllFriendRequests
 } from '../utils/blockchainTransactions';
 import { hasIpfsCredentials, getIpfsStatus } from '../utils/ipfsService';
+import { 
+  initFriendRequestWatcher, 
+  stopFriendRequestWatcher,
+  forceCheckFriendRequests,
+  resetProcessedRequests
+} from '../utils/ipfsFriendWatcher';
 import PublicKeyManager from '../components/blockchain/PublicKeyManager';
 import { QRCodeCanvas } from 'qrcode.react';
 import { Html5Qrcode } from 'html5-qrcode';
@@ -44,6 +54,12 @@ export default function Dashboard() {
   const [blockchainStatus, setBlockchainStatus] = useState(null);
   const [showBlockchainDetails, setShowBlockchainDetails] = useState(false);
   const [checkingBlockchain, setCheckingBlockchain] = useState(false);
+  // New state for friend requests
+  const [pendingRequests, setPendingRequests] = useState([]);
+  const [loadingRequests, setLoadingRequests] = useState(false);
+  const [sentRequests, setSentRequests] = useState([]);
+  const [showFriendRequests, setShowFriendRequests] = useState(false);
+  const [processingAction, setProcessingAction] = useState({});
   const scannerRef = useRef(null);
   
   // Check if user is authenticated on component mount
@@ -111,6 +127,77 @@ export default function Dashboard() {
       }
     } catch (error) {
       console.error('Error loading IPFS profile:', error);
+    }
+  };
+  
+  // Check for pending friend requests
+  const checkForFriendRequests = async () => {
+    if (!profileData || !profileData.did) return;
+    
+    try {
+      setLoadingRequests(true);
+      
+      // Get all friend requests (both sent and received)
+      const result = await getAllFriendRequests();
+      
+      if (result.success) {
+        setPendingRequests(result.received.filter(req => req.status === 'pending'));
+        setSentRequests(result.sent);
+      } else {
+        console.error('Failed to fetch friend requests:', result.error);
+      }
+    } catch (error) {
+      console.error('Error checking for friend requests:', error);
+    } finally {
+      setLoadingRequests(false);
+    }
+  };
+  
+  // Check for friend requests when profile data changes
+  useEffect(() => {
+    if (profileData && profileData.did) {
+      checkForFriendRequests();
+    }
+  }, [profileData]);
+  
+  // Handle friend request acceptance
+  const handleAcceptFriendRequest = async (requestId) => {
+    try {
+      setProcessingAction(prev => ({ ...prev, [requestId]: 'accepting' }));
+      
+      const result = await acceptFriendRequest(requestId);
+      
+      if (result.success) {
+        // Update the UI by refreshing friend requests and friends list
+        checkForFriendRequests();
+        loadFriends();
+      } else {
+        console.error('Failed to accept friend request:', result.error);
+      }
+    } catch (error) {
+      console.error('Error accepting friend request:', error);
+    } finally {
+      setProcessingAction(prev => ({ ...prev, [requestId]: null }));
+    }
+  };
+  
+  // Handle friend request rejection
+  const handleRejectFriendRequest = async (requestId) => {
+    try {
+      setProcessingAction(prev => ({ ...prev, [requestId]: 'rejecting' }));
+      
+      const result = await rejectFriendRequest(requestId);
+      
+      if (result.success) {
+        // Update the UI by refreshing friend requests
+        checkForFriendRequests();
+      } else {
+        console.error('Failed to reject friend request:', result.error);
+      }
+    } catch (error) {
+      console.error('Error rejecting friend request:', error);
+    } finally {
+      setProcessingAction(prev => ({ ...prev, [requestId]: null }));
     }
   };
   
@@ -300,7 +387,7 @@ export default function Dashboard() {
     
     try {
       await scannerRef.current.start(
-        { facingMode: "environment" },
+       
         (decodedText) => {
           // Handle both direct DID scans and URL-based QR codes
           let didToSearch = decodedText;
@@ -456,6 +543,7 @@ export default function Dashboard() {
 
     checkBlockchainStatus();
   }, []);
+
 
   // Show loading state
   if (loading) {
@@ -688,7 +776,7 @@ export default function Dashboard() {
                   className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
                   </svg>
                   Go to Chats
                 </Link>
@@ -701,6 +789,32 @@ export default function Dashboard() {
                   </svg>
                   Social Posts
                 </Link>
+                
+                {/* Friend Request Notification Button */}
+                <button
+                  onClick={() => setShowFriendRequests(!showFriendRequests)}
+                  className="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 0114 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                  </svg>
+                  Friend Requests
+                  {pendingRequests.length > 0 && (
+                    <span className="ml-2 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-red-500 rounded-full">
+                      {pendingRequests.length}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  onClick={checkForFriendRequests}
+                  className="inline-flex items-center justify-center px-4 py-2 border border-gray-600 text-sm font-medium rounded-md shadow-sm text-white bg-gray-700 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Refresh Status
+                </button>
               </div>
             </div>
 
@@ -859,166 +973,226 @@ export default function Dashboard() {
             </div>
           </div>
           
-          {/* Blockchain Public Key Manager Section */}
-          <div className="mt-8 bg-gray-800 rounded-lg shadow p-6 border border-gray-700">
-            <h2 className="text-lg font-medium text-white">Blockchain Public Key Manager</h2>
-            <p className="mt-1 text-sm text-gray-400">
-              Publish your public key to the Ethereum blockchain for secure, decentralized access
-            </p>
-            
-            {profileData && profileData.did && (
-              <PublicKeyManager userId={profileData.did} />
-            )}
-            
-            {!profileData?.did && (
-              <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-800 rounded-md">
-                <p className="text-yellow-400 text-sm">
-                  Please complete your profile to manage your blockchain public key
-                </p>
-              </div>
-            )}
-          </div>
-          
-          {/* My Friends Section */}
-          <div className="mt-8 bg-gray-800 rounded-lg shadow p-6 border border-gray-700">
-            <h2 className="text-lg font-medium text-white">My Friends</h2>
-            <p className="mt-1 text-sm text-gray-400">
-              List of your friends for secure encrypted messaging
-            </p>
-            
-            {loadingFriends ? (
-              <div className="mt-4 text-center">
-                <svg className="animate-spin h-5 w-5 text-emerald-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <p className="mt-2 text-sm text-gray-300">Loading friends...</p>
-              </div>
-            ) : (
-              <div className="mt-4">
-                {friendsList.length > 0 ? (
-                  <ul className="space-y-4">
-                    {friendsList.map((friend) => (
-                      <li key={friend.did} className="bg-gray-700 rounded-md p-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h3 className="text-md font-medium text-emerald-400">{friend.displayName}</h3>
-                            <p className="text-xs text-gray-400 break-all">{friend.did}</p>
+          {/* Friend Requests Section - NEW */}
+          {showFriendRequests && (
+            <div className="mt-8 bg-gray-800 rounded-lg shadow p-6 border border-gray-700">
+              <h2 className="text-lg font-medium text-white flex items-center justify-between">
+                <span>Friend Requests</span>
+                <button 
+                  onClick={() => setShowFriendRequests(false)}
+                  className="text-sm text-gray-400 hover:text-white"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </h2>
+              
+              {loadingRequests ? (
+                <div className="flex justify-center items-center py-8">
+                  <svg className="animate-spin h-8 w-8 text-emerald-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                </div>
+              ) : (
+                <div className="mt-4">
+                  <div className="mb-6">
+                    <h3 className="text-md font-medium text-white mb-4">Pending Requests</h3>
+                    
+                    {pendingRequests.length > 0 ? (
+                      <div className="space-y-4">
+                        {pendingRequests.map((request) => (
+                          <div key={request.id} className="bg-gray-700 rounded-lg p-4">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <h4 className="text-emerald-400 font-medium">{request.fromName}</h4>
+                                <p className="text-xs text-gray-400">{request.from}</p>
+                                <p className="text-sm text-gray-300 mt-2">{request.message}</p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                  {new Date(request.timestamp).toLocaleString()}
+                                </p>
+                              </div>
+                              <div className="flex space-x-2">
+                                <button
+                                  onClick={() => handleAcceptFriendRequest(request.id)}
+                                  disabled={processingAction[request.id]}
+                                  className={`px-3 py-1 rounded-md text-sm font-medium ${
+                                    processingAction[request.id] === 'accepting'
+                                      ? 'bg-gray-500 cursor-not-allowed'
+                                      : 'bg-emerald-600 hover:bg-emerald-700'
+                                  } text-white`}
+                                >
+                                  {processingAction[request.id] === 'accepting' ? (
+                                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                  ) : 'Accept'}
+                                </button>
+                                <button
+                                  onClick={() => handleRejectFriendRequest(request.id)}
+                                  disabled={processingAction[request.id]}
+                                  className={`px-3 py-1 rounded-md text-sm font-medium ${
+                                    processingAction[request.id] === 'rejecting'
+                                      ? 'bg-gray-500 cursor-not-allowed'
+                                      : 'bg-red-600 hover:bg-red-700'
+                                  } text-white`}
+                                >
+                                  {processingAction[request.id] === 'rejecting' ? (
+                                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                  ) : 'Reject'}
+                                </button>
+                              </div>
+                            </div>
                           </div>
-                          <Link 
-                            href={`/chat/${friend.did}`}
-                            className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                          >
-                            Message
-                          </Link>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="text-center py-2">
-                    <p className="text-gray-400">You have no friends added yet</p>
-                    <p className="text-xs text-gray-400 mt-1">Search for users by their DID to add them as friends</p>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="bg-gray-700 p-6 rounded-lg text-center">
+                        <p className="text-gray-400">No pending friend requests</p>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Friend Request Section */}
+                  
+                  <div>
+                    <h3 className="text-md font-medium text-white mb-4">Sent Requests</h3>
+                    
+                    {sentRequests.length > 0 ? (
+                      <div className="space-y-4">
+                        {sentRequests.map((request) => (
+                          <div key={request.id} className="bg-gray-700 rounded-lg p-4">
+                            <div>
+                              <div className="flex justify-between">
+                                <h4 className="text-blue-400 font-medium">To: {request.to}</h4>
+                                <span className="text-xs px-2 py-1 rounded bg-gray-600 text-gray-300">
+                                  {request.status === 'pending' ? 'Pending' : 
+                                   request.status === 'accepted' ? 'Accepted' : 'Rejected'}
+                                </span>
+                              </div>
+                              <p className="text-sm text-gray-300 mt-2">{request.message}</p>
+                              <p className="text-xs text-gray-500 mt-1">
+                                {new Date(request.timestamp).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="bg-gray-700 p-6 rounded-lg text-center">
+                        <p className="text-gray-400">No sent friend requests</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Add Friend Section - NEW */}
           <div className="mt-8 bg-gray-800 rounded-lg shadow p-6 border border-gray-700">
             <h2 className="text-lg font-medium text-white">Add Friend</h2>
             <p className="mt-1 text-sm text-gray-400">
-              Search for other users by their DID and add them as friends for secure encrypted messaging
+              Search for friends by their DID (Decentralized Identifier)
             </p>
             
-            <div className="mt-4 flex space-x-2">
-              <input
-                type="text"
-                className="flex-1 bg-gray-700 rounded-md border border-gray-600 p-2 text-white text-sm focus:ring-emerald-500 focus:border-emerald-500"
-                placeholder="Enter DID (did:ethr:0x...)"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-              />
-              <button
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
-                onClick={handleSearch}
-                disabled={searching || !searchQuery.trim()}
-              >
-                {searching ? (
-                  <>
+            <div className="mt-6">
+              <div className="flex">
+                <div className="relative flex-grow">
+                  <input
+                    type="text"
+                    className="block w-full bg-gray-700 border border-gray-600 rounded-l-md py-2 pl-3 pr-3 text-white placeholder-gray-400 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
+                    placeholder="Enter DID (did:ethr:...)"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSearch}
+                  disabled={searching || !searchQuery.trim()}
+                  className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-r-md shadow-sm text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 ${
+                    (searching || !searchQuery.trim()) ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                >
+                  {searching ? (
                     <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    Searching...
-                  </>
-                ) : (
-                  <>Search</>
-                )}
-              </button>
-              <button
-                className="inline-flex items-center px-4 py-2 border border-gray-500 text-sm font-medium rounded-md text-white bg-gray-700 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
-                onClick={toggleQrScanner}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M3 4a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm2 2V5h1v1H5zM3 13a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1H4a1 1 0 01-1-1v-3zm2 2v-1h1v1H5zM13 3a1 1 0 00-1 1v3a1 1 0 001 1h3a1 1 0 001-1V4a1 1 0 00-1-1h-3zm1 2v1h1V5h-1z" />
-                </svg>
-                {showQrScanner ? 'Stop Scanning' : 'Scan QR Code'}
-              </button>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  )}
+                  Search
+                </button>
+                <button 
+                  onClick={toggleQrScanner}
+                  className="ml-2 inline-flex items-center px-3 py-2 border border-gray-600 text-sm font-medium rounded-md shadow-sm text-white bg-gray-700 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M3 4a1 1 0 011-1h3a1 1 0 010 2H5v3a1 1 0 01-2 0V4zm1 9a1 1 0 110 2h3a1 1 0 110 2H4a1 1 0 01-1-1v-3a1 1 0 011-1zm11-9a1 1 0 011 1v3a1 1 0 11-2 0V5h-3a1 1 0 110-2h4a1 1 0 011 1zm-1 9a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 110-2h3v-3a1 1 0 011-1z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </div>
+              
+              {/* QR Scanner */}
+              {showQrScanner && (
+                <div className="mt-4 p-4 bg-gray-700 rounded-lg">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="text-sm font-medium text-white">Scan QR Code</h3>
+                    <button 
+                      onClick={stopQrScanner}
+                      className="text-xs text-gray-400 hover:text-white"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div id="qr-reader" className="w-full bg-gray-800 rounded-md overflow-hidden" style={{height: '240px'}}></div>
+                  <p className="mt-2 text-xs text-gray-400">
+                    Point your camera at a friend's QR code to add them
+                  </p>
+                </div>
+              )}
             </div>
             
-            {/* QR Scanner */}
-            {showQrScanner && (
-              <div className="mt-4 bg-gray-700 rounded-lg p-4">
-                <h3 className="text-md font-medium text-white mb-2">Scan Friend's QR Code</h3>
-                <p className="text-sm text-gray-400 mb-4">
-                  Point your camera at your friend's QR code to add them
-                </p>
-                <div id="qr-reader" className="w-full max-w-sm mx-auto bg-white rounded-lg overflow-hidden"></div>
-                <div className="flex justify-center mt-4">
-                  <button 
-                    onClick={stopQrScanner}
-                    className="text-sm text-red-400 hover:text-red-300"
-                  >
-                    Cancel Scanning
-                  </button>
-                </div>
-              </div>
-            )}
-            
             {/* Search Results */}
-            {searchResult && !showQrScanner && (
-              <div className="mt-4 p-4 rounded-md bg-gray-700">
-                {searchResult.found ? (
-                  <div>
-                    <div className="flex items-center justify-between">
+            {searchResult && (
+              <div className="mt-6">
+                <h3 className="text-sm font-medium text-gray-300 mb-2">Search Results</h3>
+                
+                {searchResult.error ? (
+                  <div className="bg-red-900/20 p-4 rounded-md border border-red-800/30">
+                    <p className="text-red-400">{searchResult.error}</p>
+                  </div>
+                ) : searchResult.found ? (
+                  <div className="bg-gray-700 p-4 rounded-md">
+                    <div className="flex items-start justify-between">
                       <div>
-                        <h3 className="text-md font-medium text-emerald-400">{searchResult.displayName}</h3>
-                        <p className="text-xs text-gray-400 break-all">{searchResult.did}</p>
-                        {searchResult.ipfsProfile?.username && (
-                          <p className="text-xs text-blue-300 mt-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="inline-block h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            IPFS verified username
-                          </p>
-                        )}
+                        <h4 className="text-emerald-400 font-medium">{searchResult.displayName || "Unknown User"}</h4>
+                        <p className="text-xs text-gray-400 break-all mt-1">{searchResult.did}</p>
                       </div>
                       <button
-                        className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                         onClick={handleFriendRequest}
                         disabled={processingRequest}
+                        className={`px-4 py-2 rounded-md text-sm font-medium ${
+                          processingRequest
+                            ? 'bg-gray-500 cursor-not-allowed'
+                            : 'bg-emerald-600 hover:bg-emerald-700'
+                        } text-white`}
                       >
                         {processingRequest ? (
-                          <>
-                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            Processing...
-                          </>
+                          <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
                         ) : (
                           <>Send Friend Request</>
                         )}
@@ -1026,50 +1200,253 @@ export default function Dashboard() {
                     </div>
                   </div>
                 ) : (
-                  <div className="text-center py-2">
-                    <p className="text-red-400">User not found with this DID</p>
-                    <p className="text-xs text-gray-400 mt-1">Make sure the DID is correct and try again</p>
+                  <div className="bg-gray-700 p-4 rounded-md">
+                    <p className="text-gray-400">No user found with that DID</p>
                   </div>
                 )}
               </div>
             )}
             
             {/* Friend Request Result */}
-            {friendRequestResult && !friendRequestResult.error && (
-              <div className="mt-4 p-4 rounded-md bg-green-900/20 border border-green-800">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-md font-medium text-emerald-400">Friend Request Created!</h3>
-                  <span className="text-xs text-gray-400">
-                    {new Date(friendRequestResult.timestamp).toLocaleString()}
-                  </span>
-                </div>
-                <p className="text-sm text-gray-300 mt-2">
-                  Friend request with encrypted symmetric key has been generated. Check your browser console to copy the data.
-                </p>
-                <p className="text-xs text-gray-400 mt-1">
-                  <span className="font-medium">From:</span> {friendRequestResult.from}
-                </p>
-                <p className="text-xs text-gray-400">
-                  <span className="font-medium">To:</span> {friendRequestResult.to}
-                </p>
-                <div className="mt-2">
-                  <button
-                    className="text-xs text-blue-400 hover:text-blue-300"
-                    onClick={() => console.log("Friend request data:", JSON.stringify(friendRequestResult, null, 2))}
-                  >
-                    Print data to console again
-                  </button>
-                </div>
+            {friendRequestResult && (
+              <div className="mt-4">
+                {friendRequestResult.error ? (
+                  <div className="bg-red-900/20 p-4 rounded-md border border-red-800/30">
+                    <p className="text-red-400">Error: {friendRequestResult.error}</p>
+                  </div>
+                ) : friendRequestResult.success ? (
+                  <div className="bg-emerald-900/20 p-4 rounded-md border border-emerald-800/30">
+                    <p className="text-emerald-400">Friend request sent successfully!</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {ipfsStatus.connected 
+                        ? "The request has been stored in IPFS and will be visible when your friend logs in."
+                        : "The request has been stored locally and will be visible when your friend logs in."}
+                    </p>
+                  </div>
+                ) : null}
               </div>
             )}
+          </div>
+          
+          {/* Debug Friend Requests Section */}
+          <div className="mt-8 bg-gray-800 rounded-lg shadow p-6 border border-gray-700">
+            <h2 className="text-lg font-medium text-white">Debug Friend Requests</h2>
+            <p className="mt-1 text-sm text-gray-400">
+              Use these controls to troubleshoot friend request issues
+            </p>
             
-            {/* Friend Request Error */}
-            {friendRequestResult && friendRequestResult.error && (
-              <div className="mt-4 p-4 rounded-md bg-red-900/20 border border-red-800">
-                <h3 className="text-md font-medium text-red-400">Error Creating Friend Request</h3>
-                <p className="text-sm text-gray-300 mt-1">{friendRequestResult.error}</p>
+            <div className="mt-4 grid grid-cols-2 gap-4">
+              <button
+                onClick={() => {
+                  if (profileData?.did) {
+                    console.log('Forcing check for friend requests for DID:', profileData.did);
+                    forceCheckFriendRequests(profileData.did);
+                    setTimeout(() => {
+                      checkForFriendRequests();
+                    }, 1000); // Refresh UI after giving the checker time to work
+                  } else {
+                    console.error('Cannot force check requests: No profile DID available');
+                  }
+                }}
+                className="inline-flex items-center justify-center px-4 py-2 border border-yellow-500 text-sm font-medium rounded-md shadow-sm text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                Force Check for
+              <button
+                onClick={() => {
+                  console.log('Resetting request tracking and forcing check');
+                  resetProcessedRequests();
+                  setTimeout(() => {
+                    if (profileData?.did) {
+                      forceCheckFriendRequests(profileData.did);
+                      setTimeout(() => {
+                        checkForFriendRequests();
+                      }, 1000); // Refresh UI after giving the checker time to work
+                    }
+                  }, 500);
+                }}
+                className="inline-flex items-center justify-center px-4 py-2 border border-purple-500 text-sm font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Reset Processed Requests
+              </button>
+            </div>
+            
+            <div className="mt-4">
+              <div className="p-3 rounded-md bg-blue-900/20 border border-blue-800">
+                <p className="text-sm text-blue-400">
+                  <strong>How to test friend requests:</strong>
+                </p>
+                <ol className="mt-2 text-xs text-blue-300 list-decimal list-inside space-y-1">
+                  <li>Login with two different users (use two browser windows or incognito mode)</li>
+                  <li>Send a friend request from one user to the other</li>
+                  <li>In the recipient's dashboard, click "Reset Processed Requests"</li>
+                  <li>Then click "Force Check for Requests" to immediately check for new requests</li>
+                  <li>The friend request should now appear in the pending requests list</li>
+                </ol>
               </div>
-            )}
+            </div>
+            
+            <div className="mt-4">
+              <button 
+                onClick={() => {
+                  // Display the current state of localStorage for debugging
+                  console.log('liberaChainMockIpfs:', JSON.parse(localStorage.getItem('liberaChainMockIpfs') || '{}'));
+                  console.log('liberaChainFriendRequests:', JSON.parse(localStorage.getItem('liberaChainFriendRequests') || '{}'));
+                  console.log('liberaChainProcessedRequests:', JSON.parse(localStorage.getItem('liberaChainProcessedRequests') || '{}'));
+                  console.log('liberaChainProcessedFallbackRequests:', JSON.parse(localStorage.getItem('liberaChainProcessedFallbackRequests') || '{}'));
+                  console.log('liberaChainSentFriendRequests:', JSON.parse(localStorage.getItem('liberaChainSentFriendRequests') || '{}'));
+                  console.log('liberaChainFriendships:', JSON.parse(localStorage.getItem('liberaChainFriendships') || '{}'));
+                }}
+                className="text-xs text-blue-400 hover:text-blue-300 flex items-center mb-4"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m-1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Print Storage Debug Info to Console
+              </button>
+              
+              {/* New section to view all IPFS content */}
+              <div className="mt-4">
+                <h3 className="text-sm font-medium text-white flex items-center justify-between">
+                  <span>Raw IPFS Friend Requests</span>
+                  <button
+                    onClick={() => {
+                      const debugContent = document.getElementById('debug-ipfs-content');
+                      if (debugContent) {
+                        const mockIpfsStore = JSON.parse(localStorage.getItem('liberaChainMockIpfs') || '{}');
+                        let friendRequestHTML = '';
+                        
+                        // Find all friend request files in mock IPFS
+                        Object.entries(mockIpfsStore).forEach(([key, content]) => {
+                          if (key.includes('friend-request')) {
+                            try {
+                              const requestData = JSON.parse(content);
+                              const timestamp = new Date(requestData.timestamp).toLocaleString();
+                              const isForCurrentUser = requestData.to === profileData?.did;
+                              const processed = JSON.parse(localStorage.getItem('liberaChainProcessedRequests') || '{}')[key];
+                              
+                              friendRequestHTML += `
+                                <div class="p-2 mb-2 ${isForCurrentUser ? 'bg-green-900/20 border-green-800/30' : 'bg-gray-700'} rounded-md border">
+                                  <div class="text-xs ${isForCurrentUser ? 'text-green-400 font-bold' : 'text-gray-300'}">File: ${key}</div>
+                                  <div class="grid grid-cols-2 gap-1 mt-1 text-xs">
+                                    <div class="text-gray-400">From:</div>
+                                    <div class="text-blue-400">${requestData.from}</div>
+                                    <div class="text-gray-400">To:</div>
+                                    <div class="text-blue-400">${requestData.to}</div>
+                                    <div class="text-gray-400">Status:</div>
+                                    <div class="text-yellow-400">${requestData.status}</div>
+                                    <div class="text-gray-400">Time:</div>
+                                    <div class="text-gray-300">${timestamp}</div>
+                                    <div class="text-gray-400">Processed:</div>
+                                    <div class="text-gray-300">${processed ? new Date(processed).toLocaleString() : 'No'}</div>
+                                  </div>
+                                </div>
+                              `;
+                            } catch (err) {
+                              friendRequestHTML += `
+                                <div class="p-2 mb-2 bg-red-900/20 rounded-md border border-red-800/30">
+                                  <div class="text-xs text-red-400">Error parsing: ${key}</div>
+                                  <div class="text-xs text-gray-400">${err.message}</div>
+                                </div>
+                              `;
+                            }
+                          }
+                        });
+                        
+                        if (friendRequestHTML === '') {
+                          friendRequestHTML = '<div class="p-2 text-gray-400 text-center">No friend requests found in IPFS</div>';
+                        }
+                        
+                        debugContent.innerHTML = friendRequestHTML;
+                      }
+                    }}
+                    className="text-xs text-emerald-500 hover:text-emerald-400 flex items-center"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Refresh IPFS Data
+                  </button>
+                </h3>
+                <div className="mt-2 p-3 bg-gray-900 rounded-md border border-gray-700 max-h-96 overflow-y-auto">
+                  <div id="debug-ipfs-content" className="text-xs">
+                    <div className="p-2 text-gray-400 text-center">Click "Refresh IPFS Data" to view all friend requests in IPFS</div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Display all processed requests tracking */}
+              <div className="mt-4">
+                <h3 className="text-sm font-medium text-white flex items-center justify-between">
+                  <span>Processed Request Tracking</span>
+                  <button
+                    onClick={() => {
+                      const processedContent = document.getElementById('debug-processed-content');
+                      if (processedContent) {
+                        const processed = JSON.parse(localStorage.getItem('liberaChainProcessedRequests') || '{}');
+                        const processedFallback = JSON.parse(localStorage.getItem('liberaChainProcessedFallbackRequests') || '{}');
+                        const processedDirect = JSON.parse(localStorage.getItem('liberaChainProcessedDirectRequests') || '{}');
+                        
+                        let processedHTML = '<div class="mb-3"><strong class="text-blue-400">IPFS Processed:</strong>';
+                        
+                        if (Object.keys(processed).length === 0) {
+                          processedHTML += '<div class="pl-2 text-gray-400">No processed IPFS requests</div>';
+                        } else {
+                          processedHTML += '<ul class="list-disc pl-5">';
+                          Object.entries(processed).forEach(([key, timestamp]) => {
+                            processedHTML += `<li class="text-gray-300">${key.substring(0, 30)}... - ${new Date(timestamp).toLocaleString()}</li>`;
+                          });
+                          processedHTML += '</ul>';
+                        }
+                        processedHTML += '</div>';
+                        
+                        processedHTML += '<div class="mb-3"><strong class="text-blue-400">Fallback Processed:</strong>';
+                        if (Object.keys(processedFallback).length === 0) {
+                          processedHTML += '<div class="pl-2 text-gray-400">No processed fallback requests</div>';
+                        } else {
+                          processedHTML += '<ul class="list-disc pl-5">';
+                          Object.entries(processedFallback).forEach(([key, timestamp]) => {
+                            processedHTML += `<li class="text-gray-300">${key.substring(0, 30)}... - ${new Date(timestamp).toLocaleString()}</li>`;
+                          });
+                          processedHTML += '</                          </ul>';
+                        }
+                        processedHTML += '</div>';
+                        
+                        processedHTML += '<div><strong class="text-blue-400">Direct Processed:</strong>';
+                        if (Object.keys(processedDirect).length === 0) {
+                          processedHTML += '<div class="pl-2 text-gray-400">No processed direct requests</div>';
+                        } else {
+                          processedHTML += '<ul class="list-disc pl-5">';
+                          Object.entries(processedDirect).forEach(([key, timestamp]) => {
+                            processedHTML += `<li class="text-gray-300">${key.substring(0, 30)}... - ${new Date(timestamp).toLocaleString()}</li>`;
+                          });
+                          processedHTML += '</ul>';
+                        }
+                        processedHTML += '</div>';
+                        
+                        processedContent.innerHTML = processedHTML;
+                      }
+                    }}
+                    className="text-xs text-emerald-500 hover:text-emerald-400 flex items-center"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Refresh Processed Data
+                  </button>
+                </h3>
+                <div className="mt-2 p-3 bg-gray-900 rounded-md border border-gray-700 max-h-64 overflow-y-auto">
+                  <div id="debug-processed-content" className="text-xs">
+                    <div className="p-2 text-gray-400 text-center">Click "Refresh Processed Data" to view tracking information</div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </main>

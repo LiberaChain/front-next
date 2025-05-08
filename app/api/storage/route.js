@@ -1,98 +1,85 @@
+import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import AWS from 'aws-sdk';
 
-// Configure the AWS SDK for S3-compatible IPFS service
-const s3 = new AWS.S3({
-  endpoint: process.env.NEXT_PUBLIC_S3_ENDPOINT,
-  accessKeyId: process.env.NEXT_PUBLIC_S3_ACCESS_KEY_ID,
-  secretAccessKey: process.env.NEXT_PUBLIC_S3_SECRET_ACCESS_KEY,
-  region: 'us-east-1',
-  signatureVersion: 'v4'
-});
+// Secure cookie options
+const COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax',
+  maxAge: 60 * 60 * 24 * 7, // 7 days
+  path: '/'
+};
 
-// Bucket name where files are stored
-const bucketName = process.env.NEXT_PUBLIC_S3_BUCKET_NAME;
-
-// GET handler for files and directory listings
-export async function GET(request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const key = searchParams.get('key') || '';
-
-    // If key is empty, list objects in bucket (directory listing)
-    if (!key) {
-      const listParams = {
-        Bucket: bucketName
-      };
-
-      const data = await s3.listObjectsV2(listParams).promise();
-      return NextResponse.json({ 
-        success: true, 
-        files: data.Contents.map(item => item.Key)
-      });
-    } else {
-      // If key is provided, get the specific object
-      const getParams = {
-        Bucket: bucketName,
-        Key: key
-      };
-
-      const data = await s3.getObject(getParams).promise();
-      
-      // Return the file content as JSON if it's a JSON file
-      if (key.endsWith('.json')) {
-        const content = data.Body.toString('utf-8');
-        return NextResponse.json(JSON.parse(content));
-      } else {
-        // Otherwise return as text
-        return new NextResponse(data.Body, {
-          headers: {
-            'Content-Type': data.ContentType || 'application/octet-stream'
-          }
-        });
-      }
-    }
-  } catch (error) {
-    console.error('Error accessing storage:', error);
-    return NextResponse.json({ 
-      success: false,
-      error: error.message 
-    }, { status: 500 });
+// Parse our secure storage cookie
+const getSecureStorage = () => {
+  const cookieStore = cookies();
+  const storageCookie = cookieStore.get('secureAppStorage');
+  
+  if (!storageCookie) {
+    return {};
   }
-}
+  
+  try {
+    return JSON.parse(storageCookie.value);
+  } catch (error) {
+    console.error('Error parsing secure storage cookie:', error);
+    return {};
+  }
+};
 
-// POST handler for uploading files
+// Set data to secure storage
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { fileName, content } = body;
-
-    if (!fileName || content === undefined) {
-      return NextResponse.json({ 
-        success: false,
-        error: 'fileName and content are required'
-      }, { status: 400 });
-    }
-
-    const params = {
-      Bucket: bucketName,
-      Key: fileName,
-      Body: content,
-      ContentType: 'application/json'
-    };
-
-    const data = await s3.upload(params).promise();
+    const { action, key, data } = body;
     
-    return NextResponse.json({ 
-      success: true,
-      location: data.Location,
-      key: data.Key
-    });
+    if (!key) {
+      return NextResponse.json({ success: false, error: 'Key is required' }, { status: 400 });
+    }
+    
+    const secureStorage = getSecureStorage();
+    
+    if (action === 'set') {
+      // Store data
+      secureStorage[key] = data;
+    } else if (action === 'remove') {
+      // Remove data
+      delete secureStorage[key];
+    } else {
+      return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });
+    }
+    
+    // Update the cookie with new storage data
+    cookies().set('secureAppStorage', JSON.stringify(secureStorage), COOKIE_OPTIONS);
+    
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error uploading to storage:', error);
-    return NextResponse.json({ 
-      success: false,
-      error: error.message 
-    }, { status: 500 });
+    console.error('Error in storage API:', error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
+// Get data from secure storage
+export async function GET(request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const action = searchParams.get('action');
+    const key = searchParams.get('key');
+    
+    if (action !== 'get') {
+      return NextResponse.json({ success: false, error: 'Invalid action' }, { status: 400 });
+    }
+    
+    if (!key) {
+      return NextResponse.json({ success: false, error: 'Key is required' }, { status: 400 });
+    }
+    
+    const secureStorage = getSecureStorage();
+    const data = secureStorage[key];
+    
+    return NextResponse.json({ success: true, data });
+  } catch (error) {
+    console.error('Error in storage API:', error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

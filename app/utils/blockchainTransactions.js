@@ -1,4 +1,7 @@
+// Blockchain transaction handling with IPFS integration
 import { ethers } from "ethers";
+import { uploadFile, getFile } from './ipfs-crud.js';
+import { hasIpfsCredentials } from './ipfsService.js';
 
 // Define ABIs directly to avoid build issues
 const userPublicKeysABI = [
@@ -470,86 +473,215 @@ export const searchUserByDid = async (did) => {
   return { found: true, did, displayName: "User" };
 };
 
-export const createFriendRequest = async (did, publicKey) => {
-  console.log("createFriendRequest called with:", did, publicKey);
-  return { success: true, from: "current-user", to: did };
+// Generate a unique identifier for a friend request between two users
+const generateFriendRequestId = (senderDid, receiverDid) => {
+  // Sort DIDs to ensure consistent IDs regardless of who initiates
+  const sortedDids = [senderDid, receiverDid].sort();
+  return `fr_${sortedDids[0]}_${sortedDids[1]}_${Date.now()}`;
 };
 
-// Generate asymmetric keys for secure messaging
-export const generateAsymmetricKeys = async () => {
+// Create a friend request and store it in IPFS
+export const createFriendRequest = async (receiverDid, receiverPublicKey) => {
   try {
-    // Create a random wallet
-    const wallet = ethers.Wallet.createRandom();
+    if (!hasIpfsCredentials()) {
+      throw new Error('IPFS credentials required for friend requests');
+    }
 
-    // Get the wallet's address, privateKey, and publicKey
-    const address = wallet.address;
-    const privateKey = wallet.privateKey;
-    const publicKey = wallet.publicKey;
+    // Get sender info from auth state
+    const profileData = JSON.parse(localStorage.getItem('liberaChainIdentity'));
+    if (!profileData?.did) {
+      throw new Error('User not authenticated');
+    }
 
-    console.log("Generated new key pair");
+    // Create friend request object
+    const friendRequest = {
+      id: `fr-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      from: profileData.did,
+      fromName: profileData.displayName || profileData.did,
+      to: receiverDid,
+      message: `Friend request from ${profileData.displayName || 'Anonymous'}`,
+      timestamp: Date.now(),
+      status: 'pending'
+    };
+
+    // Generate unique filename for IPFS
+    const requestFileName = `friend-request_${friendRequest.id}.json`;
+    
+    // Upload to IPFS
+    const requestCid = await uploadFile(requestFileName, JSON.stringify(friendRequest));
+    if (!requestCid) {
+      throw new Error('Failed to upload friend request to IPFS');
+    }
 
     return {
-      address,
-      privateKey,
-      publicKey,
+      ...friendRequest,
+      success: true,
+      cid: requestCid
     };
   } catch (error) {
-    console.error("Error generating asymmetric keys:", error);
-    throw error;
-  }
-};
-
-// Store messaging keys in local storage
-export const storeMessagingKeys = (privateKey, publicKey, address) => {
-  try {
-    const messagingKeys = {
-      privateKey,
-      publicKey,
-      address,
-      createdAt: new Date().toISOString(),
+    console.error('Error creating friend request:', error);
+    return {
+      success: false,
+      error: error.message || 'Unknown error creating friend request'
     };
-
-    // Encrypt private key with a derived key or password in a real app
-    localStorage.setItem(
-      "liberaChainMessagingKeys",
-      JSON.stringify(messagingKeys)
-    );
-    return true;
-  } catch (error) {
-    console.error("Error storing messaging keys:", error);
-    return false;
   }
 };
 
-// Retrieve messaging keys from local storage
-export const retrieveMessagingKeys = () => {
+// Check for pending friend requests for the current user
+export const checkPendingFriendRequests = async () => {
   try {
-    const keysStr = localStorage.getItem("liberaChainMessagingKeys");
-    if (!keysStr) return null;
-
-    return JSON.parse(keysStr);
+    // Get current user's DID
+    const profileData = JSON.parse(localStorage.getItem('liberaChainIdentity') || '{}');
+    
+    if (!profileData?.did) {
+      throw new Error('User profile not found');
+    }
+    
+    // Check if we're using local storage mode for IPFS
+    const { hasIpfsCredentials } = await import('./ipfsService.js');
+    const useIpfs = hasIpfsCredentials();
+    
+    let pendingRequests = [];
+    
+    if (useIpfs) {
+      // In a real app, you would query IPFS for requests where the 'to' field matches the user's DID
+      // For example, by using an IPFS indexer or a database that tracks friend request CIDs
+      
+      // Since we're simulating this functionality, we'll check in localStorage
+      console.log('Checking IPFS for pending friend requests (simulated)');
+    } else {
+      // Check in localStorage (fallback/mock mode)
+      const allRequests = JSON.parse(localStorage.getItem('liberaChainFriendRequests') || '{}');
+      
+      // Filter for requests addressed to the current user that are still pending
+      Object.values(allRequests).forEach(request => {
+        if (request.to === profileData.did && request.status === 'pending') {
+          pendingRequests.push(request);
+        }
+      });
+    }
+    
+    return {
+      success: true,
+      requests: pendingRequests
+    };
   } catch (error) {
-    console.error("Error retrieving messaging keys:", error);
-    return null;
+    console.error('Error checking pending friend requests:', error);
+    return {
+      success: false,
+      error: error.message,
+      requests: []
+    };
   }
 };
 
-// Store user profile in IPFS
-export const storeUserProfileInIPFS = async (profile) => {
-  console.log("Storing user profile in IPFS:", profile);
-  return { success: true };
+// Accept a friend request
+export const acceptFriendRequest = async (requestId) => {
+  try {
+    if (!hasIpfsCredentials()) {
+      throw new Error('IPFS credentials required to accept friend request');
+    }
+
+    // Find the request file in IPFS
+    const response = await fetch('/api/storage');
+    if (!response.ok) {
+      throw new Error('Failed to list IPFS files');
+    }
+
+    const listData = await response.json();
+    const requestFiles = listData.files.filter(file => file.includes(requestId));
+    
+    if (requestFiles.length === 0) {
+      throw new Error('Friend request not found');
+    }
+
+    // Get the request data
+    const content = await getFile(requestFiles[0]);
+    if (!content) {
+      throw new Error('Failed to read friend request');
+    }
+
+    const requestData = JSON.parse(content);
+    requestData.status = 'accepted';
+    
+    // Update the request in IPFS
+    await uploadFile(requestFiles[0], JSON.stringify(requestData));
+
+    // Update friendships in localStorage temporarily
+    // In a real implementation, this would be stored on-chain
+    const friendships = JSON.parse(localStorage.getItem('liberaChainFriendships') || '{}');
+    if (!friendships[requestData.to]) {
+      friendships[requestData.to] = [];
+    }
+    if (!friendships[requestData.from]) {
+      friendships[requestData.from] = [];
+    }
+    
+    if (!friendships[requestData.to].includes(requestData.from)) {
+      friendships[requestData.to].push(requestData.from);
+    }
+    if (!friendships[requestData.from].includes(requestData.to)) {
+      friendships[requestData.from].push(requestData.to);
+    }
+    
+    localStorage.setItem('liberaChainFriendships', JSON.stringify(friendships));
+
+    return {
+      success: true,
+      request: requestData
+    };
+  } catch (error) {
+    console.error('Error accepting friend request:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
 };
 
-// Get user profile from IPFS
-export const getUserProfileFromIPFS = async (did) => {
-  console.log("Getting user profile from IPFS for DID:", did);
-  return null;
-};
+// Reject a friend request
+export const rejectFriendRequest = async (requestId) => {
+  try {
+    if (!hasIpfsCredentials()) {
+      throw new Error('IPFS credentials required to reject friend request');
+    }
 
-// Set username for DID
-export const setUserNameForDID = async (did, username) => {
-  console.log("Setting username for DID:", did, username);
-  return { success: true };
+    // Find the request file in IPFS
+    const response = await fetch('/api/storage');
+    if (!response.ok) {
+      throw new Error('Failed to list IPFS files');
+    }
+
+    const listData = await response.json();
+    const requestFiles = listData.files.filter(file => file.includes(requestId));
+    
+    if (requestFiles.length === 0) {
+      throw new Error('Friend request not found');
+    }
+
+    // Get the request data
+    const content = await getFile(requestFiles[0]);
+    if (!content) {
+      throw new Error('Failed to read friend request');
+    }
+
+    const requestData = JSON.parse(content);
+    requestData.status = 'rejected';
+    
+    // Update the request in IPFS
+    await uploadFile(requestFiles[0], JSON.stringify(requestData));
+
+    return {
+      success: true,
+      request: requestData
+    };
+  } catch (error) {
+    console.error('Error rejecting friend request:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
 };
 
 // Get blockchain status
@@ -698,6 +830,157 @@ export const verifyUserOnBlockchain = async (did) => {
       success: false,
       verified: false,
       error: error.message || "Unknown error",
+    };
+  }
+};
+
+// Generate asymmetric keys for secure messaging
+export const generateAsymmetricKeys = async () => {
+  try {
+    // Create a random wallet
+    const wallet = ethers.Wallet.createRandom();
+
+    // Get the wallet's address, privateKey, and publicKey
+    const address = wallet.address;
+    const privateKey = wallet.privateKey;
+    const publicKey = wallet.publicKey;
+
+    console.log("Generated new key pair");
+
+    return {
+      address,
+      privateKey,
+      publicKey,
+    };
+  } catch (error) {
+    console.error("Error generating asymmetric keys:", error);
+    throw error;
+  }
+};
+
+// Store messaging keys in local storage
+export const storeMessagingKeys = (privateKey, publicKey, address) => {
+  try {
+    const messagingKeys = {
+      privateKey,
+      publicKey,
+      address,
+      createdAt: new Date().toISOString(),
+    };
+
+    // Encrypt private key with a derived key or password in a real app
+    localStorage.setItem(
+      "liberaChainMessagingKeys",
+      JSON.stringify(messagingKeys)
+    );
+    return true;
+  } catch (error) {
+    console.error("Error storing messaging keys:", error);
+    return false;
+  }
+};
+
+// Retrieve messaging keys from local storage
+export const retrieveMessagingKeys = () => {
+  try {
+    const keysStr = localStorage.getItem("liberaChainMessagingKeys");
+    if (!keysStr) return null;
+
+    return JSON.parse(keysStr);
+  } catch (error) {
+    console.error("Error retrieving messaging keys:", error);
+    return null;
+  }
+};
+
+// Store user profile in IPFS
+export const storeUserProfileInIPFS = async (profile) => {
+  try {
+    // Import the uploadProfileToIPFS function from ipfsService
+    const { uploadProfileToIPFS } = await import('./ipfsService.js');
+    
+    // Upload the profile to IPFS
+    const cid = await uploadProfileToIPFS(profile);
+    
+    if (!cid) {
+      throw new Error('Failed to upload profile to IPFS');
+    }
+    
+    return {
+      success: true,
+      cid,
+    };
+  } catch (error) {
+    console.error('Error storing user profile in IPFS:', error);
+    return { 
+      success: false,
+      error: error.message 
+    };
+  }
+};
+
+// Get user profile from IPFS
+export const getUserProfileFromIPFS = async (did) => {
+  try {
+    // Import the retrieveProfileFromIPFS function from ipfsService
+    const { retrieveProfileFromIPFS } = await import('./ipfsService.js');
+    
+    // Try to get all profiles associated with this DID
+    // In a real implementation, you would have a registry of DIDs to profile CIDs
+    // For this demo, we'll use a mock approach
+    const mockCidMap = JSON.parse(localStorage.getItem('liberaChainDidProfiles') || '{}');
+    const cid = mockCidMap[did];
+    
+    if (!cid) {
+      console.log(`No profile CID found for DID: ${did}`);
+      return null;
+    }
+    
+    // Retrieve the profile from IPFS
+    const profile = await retrieveProfileFromIPFS(cid);
+    return profile;
+  } catch (error) {
+    console.error('Error getting user profile from IPFS:', error);
+    return null;
+  }
+};
+
+// Set username for DID
+export const setUserNameForDID = async (did, username) => {
+  try {
+    if (!did || !username) {
+      throw new Error('DID and username are required');
+    }
+    
+    // Get existing profile or create new one
+    const existingProfile = await getUserProfileFromIPFS(did);
+    const profile = existingProfile || { did };
+    
+    // Update the profile
+    profile.username = username;
+    profile.updatedAt = new Date().toISOString();
+    
+    // Store updated profile in IPFS
+    const result = await storeUserProfileInIPFS(profile);
+    
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to store profile');
+    }
+    
+    // Update the DID to CID mapping
+    const mockCidMap = JSON.parse(localStorage.getItem('liberaChainDidProfiles') || '{}');
+    mockCidMap[did] = result.cid;
+    localStorage.setItem('liberaChainDidProfiles', JSON.stringify(mockCidMap));
+    
+    return {
+      success: true,
+      cid: result.cid
+    };
+  } catch (error) {
+    console.error('Error setting username for DID:', error);
+    return {
+      success: false,
+      error: error.message
     };
   }
 };

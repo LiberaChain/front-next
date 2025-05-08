@@ -13,7 +13,8 @@ import {
   generateAsymmetricKeys, 
   registerPublicKeyOnChain,
   verifyUserOnBlockchain,
-  storeMessagingKeys 
+  storeMessagingKeys,
+  storeUserProfileInIPFS
 } from '../utils/blockchainTransactions';
 
 // Main Registration component
@@ -124,36 +125,48 @@ export default function Registration() {
     setDisplayName(e.target.value);
   };
 
-  // Store identity data in browser's local storage
-  const storeIdentityInLocalStorage = () => {
+  // Update the storeIdentityAndAuth function to use IPFS directly
+  const storeIdentityAndAuth = async () => {
     const identityData = {
       did: didIdentifier,
-      displayName: displayName || `User-${walletAddress.substring(2, 8)}`, // Default name if none provided
+      displayName: displayName || `User-${walletAddress.substring(2, 8)}`,
       wallet: walletAddress,
       createdAt: new Date().toISOString()
     };
-    
-    // If we have generated keys, store them using our utility function
-    if (keyPair) {
-      // Store the messaging keys
-      storeMessagingKeys(keyPair.privateKey, keyPair.publicKey, keyPair.address);
+
+    try {
+      // If we have generated keys, store them using our utility function
+      if (keyPair) {
+        // Store the messaging keys
+        storeMessagingKeys(keyPair.privateKey, keyPair.publicKey, keyPair.address);
+        
+        // Add the messaging key address to the identity data
+        identityData.messagingKeyAddress = keyPair.address;
+      }
+
+      // Store profile in IPFS
+      const result = await storeUserProfileInIPFS(identityData);
+      if (!result.success) {
+        throw new Error('Failed to store profile in IPFS');
+      }
+
+      // Store minimal auth data in localStorage
+      const authData = {
+        did: didIdentifier,
+        expiry: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
+        wallet: walletAddress,
+        verified: true
+      };
+      localStorage.setItem('liberaChainAuth', JSON.stringify(authData));
       
-      // Add the messaging key address to the identity data
-      identityData.messagingKeyAddress = keyPair.address;
+      // Store minimal identity data for local reference
+      localStorage.setItem('liberaChainIdentity', JSON.stringify(identityData));
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error storing identity:', error);
+      return { success: false, error: error.message };
     }
-    
-    localStorage.setItem('liberaChainIdentity', JSON.stringify(identityData));
-  };
-  
-  // Store authentication state in browser's local storage
-  const storeAuthInLocalStorage = (did, expiryTime) => {
-    const authData = {
-      did,
-      expiry: expiryTime,
-      wallet: walletAddress,
-      verified: true, // Now this is a blockchain-verified account
-    };
-    localStorage.setItem('liberaChainAuth', JSON.stringify(authData));
   };
 
   // Handle form submission
@@ -180,11 +193,7 @@ export default function Registration() {
         if (blockchainVerification.verified) {
           console.log('User already registered on blockchain, skipping registration');
           // Still store identity data locally
-          storeIdentityInLocalStorage();
-          
-          // Also store auth information with 24-hour expiry
-          const expiryTime = Date.now() + (24 * 60 * 60 * 1000);
-          storeAuthInLocalStorage(didIdentifier, expiryTime);
+          await storeIdentityAndAuth();
           
           // Move to success step
           await new Promise(resolve => setTimeout(resolve, 500));
@@ -214,11 +223,7 @@ export default function Registration() {
         }
         
         // Store the DID and display name locally
-        storeIdentityInLocalStorage();
-        
-        // Also store auth information with 24-hour expiry
-        const expiryTime = Date.now() + (24 * 60 * 60 * 1000);
-        storeAuthInLocalStorage(didIdentifier, expiryTime);
+        await storeIdentityAndAuth();
         
         // Move to success step
         await new Promise(resolve => setTimeout(resolve, 500));
