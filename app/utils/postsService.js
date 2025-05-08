@@ -980,3 +980,103 @@ export const checkBlockchainPostingAbility = async () => {
 export const getBlockchainPostingFee = async () => {
   return getBlockchainPostFee();
 };
+
+/**
+ * Check if a user is authorized to view a group post
+ * @param {string} viewerDid - DID of the user trying to view the post
+ * @param {Object} postMetadata - Post metadata
+ * @returns {Promise<boolean>} Whether user is authorized
+ */
+export const isAuthorizedForGroupPost = async (viewerDid, postMetadata) => {
+  if (!postMetadata || !postMetadata.group) {
+    return false;
+  }
+  
+  const groupDid = postMetadata.group;
+  
+  try {
+    // Get the group contract
+    const contract = await getGroupRegistryContract(false);
+    
+    // Get group info
+    const groupData = await contract.getGroup(groupDid);
+    
+    // If it's a public group, anyone can view
+    if (groupData.isPublic) {
+      return true;
+    }
+    
+    // Otherwise check if user is a member
+    return await contract.isMember(groupDid, viewerDid);
+  } catch (error) {
+    console.error('Error checking group post authorization:', error);
+    return false;
+  }
+};
+
+/**
+ * Get posts for a specific group
+ * @param {string} groupDid - The group's DID
+ * @param {string} userDid - The viewing user's DID
+ * @returns {Promise<Array>} Array of posts
+ */
+export const getPostsForGroup = async (groupDid, userDid) => {
+  try {
+    // First check if user has access to this group
+    const contract = await getGroupRegistryContract(false);
+    const groupInfo = await contract.getGroup(groupDid);
+    
+    if (!groupInfo.isPublic) {
+      const isMember = await contract.isMember(groupDid, userDid);
+      if (!isMember) {
+        console.warn('User is not authorized to view this group');
+        return [];
+      }
+    }
+    
+    // Get post IDs for this group
+    const postIds = await contract.getGroupPosts(groupDid);
+    
+    // Fetch posts from blockchain and IPFS
+    const posts = await Promise.all(
+      postIds.map(async (postId) => {
+        // First try blockchain
+        try {
+          const blockchainResult = await getBlockchainPost(postId);
+          if (blockchainResult.success) {
+            return {
+              ...blockchainResult.post,
+              source: 'blockchain'
+            };
+          }
+        } catch (error) {
+          console.error(`Error fetching blockchain post ${postId}:`, error);
+        }
+        
+        // If not found in blockchain, check IPFS
+        try {
+          const ipfsResult = await retrievePostFromIPFS(postId);
+          if (ipfsResult) {
+            return {
+              ...ipfsResult,
+              source: 'ipfs',
+              cid: postId
+            };
+          }
+        } catch (error) {
+          console.error(`Error fetching IPFS post ${postId}:`, error);
+        }
+        
+        return null;
+      })
+    );
+    
+    // Filter out any nulls from errors and sort by timestamp (newest first)
+    return posts
+      .filter(post => post !== null)
+      .sort((a, b) => b.timestamp - a.timestamp);
+  } catch (error) {
+    console.error('Error getting posts for group:', error);
+    return [];
+  }
+};

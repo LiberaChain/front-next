@@ -1,0 +1,201 @@
+// GroupRegistry.sol
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract GroupRegistry {
+    struct Group {
+        string did;                 // DID for the group (did:ethr:groupAddress)
+        string name;                // Group name
+        string description;         // Group description
+        string adminDid;            // DID of the group creator/admin
+        string[] memberDids;        // Array of member DIDs
+        bytes32[] postIds;          // Array of post IDs associated with this group
+        uint256 creationTime;       // When the group was created
+        string ipfsCid;             // IPFS CID for additional group metadata/image
+        bool isPublic;              // Whether the group is public or private
+    }
+    
+    // Maps group DIDs to Group structs
+    mapping(string => Group) private groups;
+    // Maps user DIDs to arrays of group DIDs they belong to
+    mapping(string => string[]) private userGroups;
+    
+    // Events
+    event GroupCreated(string indexed groupDid, string name, string adminDid);
+    event MemberAdded(string indexed groupDid, string memberDid);
+    event MemberRemoved(string indexed groupDid, string memberDid);
+    event GroupPostAdded(string indexed groupDid, bytes32 postId);
+    
+    // Create a new group
+    function createGroup(
+        string memory _did,
+        string memory _name,
+        string memory _description,
+        string memory _adminDid,
+        bool _isPublic,
+        string memory _ipfsCid
+    ) public returns (bool) {
+        // Check if group already exists
+        require(bytes(groups[_did].did).length == 0, "Group already exists");
+        
+        // Create empty arrays for members and posts
+        string[] memory emptyMemberDids = new string[](0);
+        bytes32[] memory emptyPostIds = new bytes32[](0);
+        
+        // Create the group
+        groups[_did] = Group({
+            did: _did,
+            name: _name,
+            description: _description,
+            adminDid: _adminDid,
+            memberDids: emptyMemberDids,
+            postIds: emptyPostIds,
+            creationTime: block.timestamp,
+            ipfsCid: _ipfsCid,
+            isPublic: _isPublic
+        });
+        
+        // Add the admin as the first member
+        addMember(_did, _adminDid);
+        
+        // Add group to admin's groups
+        userGroups[_adminDid].push(_did);
+        
+        emit GroupCreated(_did, _name, _adminDid);
+        return true;
+    }
+    
+    // Add a member to a group
+    function addMember(string memory _groupDid, string memory _memberDid) public returns (bool) {
+        // Validate group exists
+        require(bytes(groups[_groupDid].did).length > 0, "Group does not exist");
+        
+        // Check if user is already a member
+        for (uint i = 0; i < groups[_groupDid].memberDids.length; i++) {
+            if (keccak256(bytes(groups[_groupDid].memberDids[i])) == keccak256(bytes(_memberDid))) {
+                return false; // Already a member
+            }
+        }
+        
+        // Add member to group
+        groups[_groupDid].memberDids.push(_memberDid);
+        
+        // Add group to user's groups
+        userGroups[_memberDid].push(_groupDid);
+        
+        emit MemberAdded(_groupDid, _memberDid);
+        return true;
+    }
+    
+    // Remove a member from a group
+    function removeMember(string memory _groupDid, string memory _memberDid) public returns (bool) {
+        // Validate group exists
+        require(bytes(groups[_groupDid].did).length > 0, "Group does not exist");
+        
+        // Find and remove member from group
+        bool found = false;
+        uint indexToRemove;
+        for (uint i = 0; i < groups[_groupDid].memberDids.length; i++) {
+            if (keccak256(bytes(groups[_groupDid].memberDids[i])) == keccak256(bytes(_memberDid))) {
+                indexToRemove = i;
+                found = true;
+                break;
+            }
+        }
+        
+        if (found) {
+            // Remove by replacing with the last element and then popping
+            if (indexToRemove < groups[_groupDid].memberDids.length - 1) {
+                groups[_groupDid].memberDids[indexToRemove] = groups[_groupDid].memberDids[groups[_groupDid].memberDids.length - 1];
+            }
+            groups[_groupDid].memberDids.pop();
+            
+            // Also remove group from user's groups
+            for (uint i = 0; i < userGroups[_memberDid].length; i++) {
+                if (keccak256(bytes(userGroups[_memberDid][i])) == keccak256(bytes(_groupDid))) {
+                    if (i < userGroups[_memberDid].length - 1) {
+                        userGroups[_memberDid][i] = userGroups[_memberDid][userGroups[_memberDid].length - 1];
+                    }
+                    userGroups[_memberDid].pop();
+                    break;
+                }
+            }
+            
+            emit MemberRemoved(_groupDid, _memberDid);
+            return true;
+        }
+        
+        return false;
+    }
+    
+    // Add a post to a group
+    function addGroupPost(string memory _groupDid, bytes32 _postId) public returns (bool) {
+        // Validate group exists
+        require(bytes(groups[_groupDid].did).length > 0, "Group does not exist");
+        
+        // Add post ID to group's posts
+        groups[_groupDid].postIds.push(_postId);
+        
+        emit GroupPostAdded(_groupDid, _postId);
+        return true;
+    }
+    
+    // Check if a user is a member of a group
+    function isMember(string memory _groupDid, string memory _memberDid) public view returns (bool) {
+        // Validate group exists
+        require(bytes(groups[_groupDid].did).length > 0, "Group does not exist");
+        
+        for (uint i = 0; i < groups[_groupDid].memberDids.length; i++) {
+            if (keccak256(bytes(groups[_groupDid].memberDids[i])) == keccak256(bytes(_memberDid))) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    // Get group details
+    function getGroup(string memory _groupDid) public view returns (
+        string memory did,
+        string memory name,
+        string memory description,
+        string memory adminDid,
+        uint256 memberCount,
+        uint256 postCount,
+        uint256 creationTime,
+        string memory ipfsCid,
+        bool isPublic
+    ) {
+        Group memory group = groups[_groupDid];
+        require(bytes(group.did).length > 0, "Group does not exist");
+        
+        return (
+            group.did,
+            group.name,
+            group.description,
+            group.adminDid,
+            group.memberDids.length,
+            group.postIds.length,
+            group.creationTime,
+            group.ipfsCid,
+            group.isPublic
+        );
+    }
+    
+    // Get group members
+    function getGroupMembers(string memory _groupDid) public view returns (string[] memory) {
+        require(bytes(groups[_groupDid].did).length > 0, "Group does not exist");
+        return groups[_groupDid].memberDids;
+    }
+    
+    // Get group posts
+    function getGroupPosts(string memory _groupDid) public view returns (bytes32[] memory) {
+        require(bytes(groups[_groupDid].did).length > 0, "Group does not exist");
+        return groups[_groupDid].postIds;
+    }
+    
+    // Get groups for a user
+    function getUserGroups(string memory _userDid) public view returns (string[] memory) {
+        return userGroups[_userDid];
+    }
+}
