@@ -1,49 +1,73 @@
 'use client'
 
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import Image from "next/image"
 import "./chat/chat.css"
 import Link from "next/link"
 
 export default function Home() {
-  return (
-    <div className='flex h-screen w-full flex-col
-     animate-gradient items-center justify-center gap-5'>
-      <div className='text-white text-3xl md:text-5xl font-semibold
-      flex gap-5 items-baseline justify-center'>
-        <h1>LiberaChain</h1>
-        <img src='/logo.svg' className="w-7 md:w-12"></img>
+  const [isLoading, setIsLoading] = useState(true);
+  const router = useRouter();
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        // Check all required auth items
+        const liberaChainAuth = localStorage.getItem('liberaChainAuth');
+        const liberaChainIdentity = localStorage.getItem('liberaChainIdentity');
+        const messagingKeys = localStorage.getItem('liberaChainMessagingKeys');
+
+        if (!liberaChainAuth || !liberaChainIdentity || !messagingKeys) {
+          console.error('Missing required auth items:', {
+            hasAuth: !!liberaChainAuth,
+            hasIdentity: !!liberaChainIdentity,
+            hasKeys: !!messagingKeys
+          });
+          router.push('/login');
+          return;
+        }
+
+        // Check if auth has expired
+        const auth = JSON.parse(liberaChainAuth);
+        if (auth.expiry && auth.expiry < Date.now()) {
+          console.error('Auth has expired');
+          localStorage.removeItem('liberaChainAuth');
+          router.push('/login');
+          return;
+        }
+
+        // All checks passed, redirect to dashboard
+        router.push('/dashboard');
+      } catch (error) {
+        console.error('Auth check error:', error);
+        router.push('/login');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkAuth();
+  }, [router]);
+
+  if (isLoading) {
+    return (
+      <div className="loading-container">
+        <div className="loading-logo">
+          <Image
+            src="/logo.svg"
+            alt="LiberaChain"
+            width={80}
+            height={80}
+            priority
+          />
+        </div>
+        <h1 className="mt-6 text-2xl font-semibold text-white page-transition">
+          LiberaChain - The trully decentralized social network
+        </h1>
       </div>
+    );
+  }
 
-      <Link href={'/chat'}>
-        <div className='flex w-40 h-12 justify-center items-center
-        rounded-xl border border-white text-white font-semibold
-        text-md hover:bg-white hover:text-[#2FD7A2] '>
-          <p>Chat</p>
-        </div>
-      </Link>
-
-      <Link href={'/dashboard'}>
-        <div className='flex w-40 h-12 justify-center items-center
-         rounded-xl border border-white text-white font-semibold
-         text-md hover:bg-white hover:text-[#2FD7A2] '>
-          <p>Dashboard</p>
-        </div>
-      </Link>
-
-      <Link href={'/login'}>
-        <div className='flex w-40 h-12 justify-center items-center
-         rounded-xl border border-white text-white font-semibold
-         text-md hover:bg-white hover:text-[#2FD7A2] '>
-          <p>Login</p>
-        </div>
-      </Link>
-
-      <Link href={'/registration'}>
-        <div className='flex w-40 h-12 justify-center items-center
-         rounded-xl border border-white text-white font-semibold
-         text-md hover:bg-white hover:text-[#2FD7A2] '>
-          <p>Create account</p>
-        </div>
-      </Link>
-    </div>
-  )
+  return null;
 }
