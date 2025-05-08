@@ -1,51 +1,27 @@
-'use client'
+"use client";
 
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import Image from "next/image"
-import "./chat/chat.css"
-import Link from "next/link"
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import Image from "next/image";
+import { isLoggedIn } from "./utils/authService";
+import "./chat/chat.css";
 
 export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        // Check all required auth items
-        const liberaChainAuth = localStorage.getItem('liberaChainAuth');
-        const liberaChainIdentity = localStorage.getItem('liberaChainIdentity');
-        const messagingKeys = localStorage.getItem('liberaChainMessagingKeys');
-
-        if (!liberaChainAuth || !liberaChainIdentity || !messagingKeys) {
-          console.error('Missing required auth items:', {
-            hasAuth: !!liberaChainAuth,
-            hasIdentity: !!liberaChainIdentity,
-            hasKeys: !!messagingKeys
-          });
-          router.push('/login');
-          return;
-        }
-
-        // Check if auth has expired
-        const auth = JSON.parse(liberaChainAuth);
-        if (auth.expiry && auth.expiry < Date.now()) {
-          console.error('Auth has expired');
-          localStorage.removeItem('liberaChainAuth');
-          router.push('/login');
-          return;
-        }
-
-        // All checks passed, redirect to dashboard
-        router.push('/dashboard');
-      } catch (error) {
-        console.error('Auth check error:', error);
-        router.push('/login');
-      } finally {
-        setIsLoading(false);
+    async function checkAuth() {
+      const loggedIn = await isLoggedIn();
+      if (!loggedIn) {
+        router.push("/login");
+        return;
       }
-    };
+
+      // All checks passed, redirect to dashboard
+      router.push("/dashboard");
+      setIsLoading(false);
+    }
 
     checkAuth();
   }, [router]);
