@@ -30,6 +30,7 @@ import PublicKeyManager from '../components/blockchain/PublicKeyManager';
 import { QRCodeCanvas } from 'qrcode.react';
 import { Html5Qrcode } from 'html5-qrcode';
 import QRCodeGenerator from '../components/QRCodeGenerator';
+import { ethers } from 'ethers';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -61,6 +62,11 @@ export default function Dashboard() {
   const [sentRequests, setSentRequests] = useState([]);
   const [showFriendRequests, setShowFriendRequests] = useState(false);
   const [processingAction, setProcessingAction] = useState({});
+  const [sendingFunds, setSendingFunds] = useState(false);
+  const [sendFundsAmount, setSendFundsAmount] = useState('');
+  const [sendFundsError, setSendFundsError] = useState(null);
+  const [sendFundsSuccess, setSendFundsSuccess] = useState(null);
+  const [selectedFriend, setSelectedFriend] = useState(null);
   const scannerRef = useRef(null);
   
   // Toggle QR code visibility
@@ -1059,7 +1065,7 @@ export default function Dashboard() {
                 ) : friendRequestResult.success ? (
                   <div className="bg-emerald-900/20 p-4 rounded-md border border-emerald-800/30">
                     <p className="text-emerald-400">Friend request sent successfully!</p>
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="text-xs text-emerald-400 mt-1">
                       {ipfsStatus.connected 
                         ? "The request has been stored in IPFS and will be visible when your friend logs in."
                         : "The request has been stored locally and will be visible when your friend logs in."}
@@ -1305,6 +1311,62 @@ export default function Dashboard() {
           </div>
         </div>
       </main>
+      
+      {selectedFriend && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-lg font-medium text-white mb-4">Send Funds</h3>
+            <div className="space-y-4">
+              <div>
+                               <label className="block text-sm font-medium text-gray-300">Amount (ETH)</label>
+                <input
+                  type="number"
+                  value={sendFundsAmount}
+                  onChange={(e) => setSendFundsAmount(e.target.value)}
+                  className="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 text-white"
+                  placeholder="0.01"
+                  step="0.001"
+                  min="0"
+                />
+              </div>
+              
+              {sendFundsError && (
+                <div className="p-2 bg-red-900/20 border border-red-800 rounded-md">
+                  <p className="text-sm text-red-400">{sendFundsError}</p>
+                </div>
+              )}
+              
+              {sendFundsSuccess && (
+                <div className="p-2 bg-emerald-900/20 border border-emerald-800 rounded-md">
+                  <p className="text-sm text-emerald-400">Successfully sent {sendFundsSuccess.amount} ETH</p>
+                  <p className="text-xs text-emerald-400 mt-1">Transaction: {sendFundsSuccess.hash}</p>
+                </div>
+              )}
+              
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => handleSendFunds(selectedFriend, sendFundsAmount)}
+                  disabled={sendingFunds}
+                  className="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md disabled:opacity-50"
+                >
+                  {sendingFunds ? 'Sending...' : 'Send'}
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedFriend(null);
+                    setSendFundsAmount('');
+                    setSendFundsError(null);
+                    setSendFundsSuccess(null);
+                  }}
+                  className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-md"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
