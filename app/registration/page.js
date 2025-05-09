@@ -15,6 +15,10 @@ import IntroStep from "./_components/step-0-intro";
 import CreateDidStep from "./_components/step-1-create";
 import SuccessStep from "./_components/step-2-success";
 
+// export const metadata = {
+//   title: "Registration",
+// };
+
 export default function Registration() {
   const router = useRouter();
   const [step, setStep] = useState(0);

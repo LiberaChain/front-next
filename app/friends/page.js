@@ -8,6 +8,10 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { getIpfsStatus } from "../utils/ipfsService";
 
+// export const metadata = {
+//   title: "Friends",
+// };
+
 export default function Friends() {
   //   const router = useRouter();
   const [profileData, setProfileData] = useState(null);
@@ -263,7 +267,7 @@ export default function Friends() {
 
   return (
     <div className="animate-gradient min-h-screen bg-gradient-to-br from-gray-900 to-gray-800">
-      <Header>
+      <Header title="Friends">
         <Link
           href="/dashboard"
           className="ml-3 inline-flex items-center px-3 py-1.5 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white bg-gray-700 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-emerald-500"

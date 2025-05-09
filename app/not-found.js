@@ -1,6 +1,12 @@
 import Image from "next/image";
 import Link from "next/link";
 
+// export const metadata = {
+//   title: {
+//     default: "LiberaChain",
+//   },
+// };
+
 export default function NotFound() {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen">

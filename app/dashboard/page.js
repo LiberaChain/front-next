@@ -13,14 +13,20 @@ import {
   getAllFriendRequests,
 } from "../utils/blockchainTransactions";
 import { getIpfsStatus } from "../utils/ipfsService";
-import DashboardHeader from "./_components/DashboardHeader";
 import UserProfile from "./_components/UserProfile";
 import EditProfile from "./_components/EditProfile";
 import QuickActions from "./_components/QuickActions";
 import NetworkStatus from "./_components/NetworkStatus";
+import ContentWrapper from "../_components/ContentWrapper";
+import { useRequireAuth } from "../_components/auth";
+
+// export const metadata = {
+//   title: "Dashboard",
+// };
 
 export default function Dashboard() {
   const router = useRouter();
+  const auth = useRequireAuth();
   const [profileData, setProfileData] = useState(null);
   const [ipfsProfile, setIpfsProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -311,14 +317,6 @@ export default function Dashboard() {
     }
   }, [handleSearch]);
 
-  // Handle logout
-  const handleLogout = () => {
-    // Clear authentication data
-    localStorage.removeItem("liberaChainAuth");
-    // Redirect to home
-    router.push("/");
-  };
-
   // Handle friend request
   const handleFriendRequest = async () => {
     if (!searchResult || !searchResult.found) return;
@@ -365,6 +363,12 @@ export default function Dashboard() {
     checkBlockchainStatus();
   }, []);
 
+  if (auth.loading) {
+    return <ContentWrapper title="Dashboard"></ContentWrapper>;
+  } else if (!auth.isAuthenticated) {
+    return null;
+  }
+
   // Show loading state
   if (loading) {
     return (
@@ -399,54 +403,46 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="animate-gradient min-h-screen bg-gradient-to-br from-gray-900 to-gray-800">
-      {/* Header */}
-      <DashboardHeader onLogout={handleLogout} />
+    <>
+      <ContentWrapper title="Dashboard">
+        {/* Profile section */}
+        <UserProfile
+          profileData={profileData}
+          ipfsProfile={ipfsProfile}
+          showQrCode={showQrCode}
+          onToggleQrCode={toggleQrCode}
+        />
 
-      {/* Main content */}
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 py-6 sm:px-0">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Profile section */}
-            <UserProfile
-              profileData={profileData}
-              ipfsProfile={ipfsProfile}
-              showQrCode={showQrCode}
-              onToggleQrCode={toggleQrCode}
-            />
+        {/* Quick Actions */}
+        <QuickActions
+          pendingRequests={pendingRequests}
+          showFriendRequests={showFriendRequests}
+          setShowFriendRequests={setShowFriendRequests}
+          checkForFriendRequests={checkForFriendRequests}
+        />
 
-            {/* Quick Actions */}
-            <QuickActions
-              pendingRequests={pendingRequests}
-              showFriendRequests={showFriendRequests}
-              setShowFriendRequests={setShowFriendRequests}
-              checkForFriendRequests={checkForFriendRequests}
-            />
+        {/* Edit Profile Section */}
+        <EditProfile
+          username={username}
+          setUsername={setUsername}
+          ipfsProfile={ipfsProfile}
+          profileData={profileData}
+          savingUsername={savingUsername}
+          usernameSuccess={usernameSuccess}
+          usernameError={usernameError}
+        />
 
-            {/* Edit Profile Section */}
-            <EditProfile
-              username={username}
-              setUsername={setUsername}
-              ipfsProfile={ipfsProfile}
-              profileData={profileData}
-              savingUsername={savingUsername}
-              usernameSuccess={usernameSuccess}
-              usernameError={usernameError}
-            />
-
-            {/* System Status */}
-            <NetworkStatus
-              ipfsStatus={ipfsStatus}
-              blockchainStatus={blockchainStatus}
-              checkingBlockchain={checkingBlockchain}
-              showIpfsDetails={showIpfsDetails}
-              setShowIpfsDetails={setShowIpfsDetails}
-              showBlockchainDetails={showBlockchainDetails}
-              setShowBlockchainDetails={setShowBlockchainDetails}
-            />
-          </div>
-        </div>
-      </main>
+        {/* System Status */}
+        <NetworkStatus
+          ipfsStatus={ipfsStatus}
+          blockchainStatus={blockchainStatus}
+          checkingBlockchain={checkingBlockchain}
+          showIpfsDetails={showIpfsDetails}
+          setShowIpfsDetails={setShowIpfsDetails}
+          showBlockchainDetails={showBlockchainDetails}
+          setShowBlockchainDetails={setShowBlockchainDetails}
+        />
+      </ContentWrapper>
 
       {selectedFriend && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
@@ -511,6 +507,6 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

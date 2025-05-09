@@ -16,6 +16,10 @@ import { storeMessage, retrieveMessages } from '../utils/ipfsMessagingService';
 // import QRModal from '../_components/QRModal';
 import MessageModeSelector from '../_components/MessageModeSelector';
 
+// export const metadata = {
+//   title: "Chat",
+// };
+
 // Mocked data for initial demo conversations
 const mockConversations = [
   { id: 1, name: 'Alice', lastMessage: 'Hey, how\'s it going?', timestamp: '10:30 AM' },

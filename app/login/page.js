@@ -17,6 +17,10 @@ import LoginStart from "./_components/step-0-start";
 import DidVerification from "./_components/step-1-verify";
 import LoginSuccess from "./_components/step-2-success";
 
+// export const metadata = {
+//   title: "Login",
+// };
+
 export default function Login() {
   const router = useRouter();
   const [step, setStep] = useState(0);
