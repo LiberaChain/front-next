@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { 
   uploadPostToIPFS, 
   storePostMetadata, 
-  getPublicPosts, 
+  getAllPublicPosts, 
   getUserPosts,
   createImportedPost,
   getPostComments,
@@ -184,7 +184,7 @@ export default function PostsPage() {
         loadedPosts = await getUserPosts(profileData.did);
       } else {
         // Load all public posts
-        loadedPosts = await getPublicPosts();
+        loadedPosts = await getAllPublicPosts();
       }
       
       // Load comments for all posts

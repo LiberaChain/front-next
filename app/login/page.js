@@ -184,19 +184,21 @@ export default function Login() {
           {step === 2 && <LoginSuccess />}
 
           {/* Footer info */}
-          <div className="mt-6">
-            <p className="text-center text-sm text-gray-300">
-              Don&apos;t have a DID yet?
-            </p>
-            <Link href="/registration" className="mt-2 block">
-              <button
-                type="button"
-                className="inline-flex w-full justify-center rounded-md border border-emerald-500 py-2 px-4 text-sm font-medium text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-400 hover:border-emerald-400 transition-colors duration-200 focus:outline-none cursor-pointer"
-              >
-                Create your decentralized identity
-              </button>
-            </Link>
-          </div>
+          {step < 2 && (
+            <div className="mt-6">
+              <p className="text-center text-sm text-gray-300">
+                Don&apos;t have a DID yet?
+              </p>
+              <Link href="/registration" className="mt-2 block">
+                <button
+                  type="button"
+                  className="inline-flex w-full justify-center rounded-md border border-emerald-500 py-2 px-4 text-sm font-medium text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-400 hover:border-emerald-400 transition-colors duration-200 focus:outline-none cursor-pointer"
+                >
+                  Create your decentralized identity
+                </button>
+              </Link>
+            </div>
+          )}
         </div>
       </div>
     </div>

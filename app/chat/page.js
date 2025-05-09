@@ -6,14 +6,14 @@ import Head from 'next/head';
 import Link from 'next/link';
 import './chat.css';
 import { getUserProfileFromIPFS, searchUserByDid } from '../utils/blockchainTransactions';
-import { 
-  initP2PNode, 
-  subscribeToMessages, 
-  sendMessage as sendP2PMessage,
-  cleanup as cleanupP2P 
-} from '../utils/p2pService';
+// import { 
+//   initP2PNode, 
+//   subscribeToMessages, 
+//   sendMessage as sendP2PMessage,
+//   cleanup as cleanupP2P 
+// } from '../utils/p2pService';
 import { storeMessage, retrieveMessages } from '../utils/ipfsMessagingService';
-import QRModal from '../_components/QRModal';
+// import QRModal from '../_components/QRModal';
 import MessageModeSelector from '../_components/MessageModeSelector';
 
 // Mocked data for initial demo conversations
@@ -666,12 +666,12 @@ export default function Home() {
         )}
       </div>
 
-      <QRModal
+      {/* <QRModal
         isVisible={qrIsVisible}
         onClose={() => setQrIsVisible(false)}
         p2pEnabled={isP2PEnabled}
         peerId={p2pPeerId}
-      />
+      /> */}
     </div>
   );
 }
