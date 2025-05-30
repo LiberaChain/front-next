@@ -3,12 +3,12 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import {
-  getUserGroups,
-  getPublicGroups,
-  createGroup,
-} from "../utils/groupsService";
-import Header from "../_components/Header";
+// import {
+//   getUserGroups,
+//   getPublicGroups,
+//   createGroup,
+// } from "../_core/groupsService";
+// import Header from "../_components/Header";
 import AuthenticatedContentWrapper from "../_components/AuthenticatedContentWrapper";
 
 // export const metadata = {

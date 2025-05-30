@@ -1,19 +1,33 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { clearAuthData } from "../utils/authService";
-import { useRequireAuth } from "./auth";
+import { Auth } from "@core/auth";
+import { useRequireAuth } from "@hooks/auth";
 import Header from "./Header";
+import { useRouter, usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 
 export default function AuthenticatedContentWrapper({ children, title }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { isAuthenticated, loading } = useRequireAuth();
+  const [isOnDashboard, setIsOnDashboard] = useState(false);
 
   const handleLogout = () => {
-    clearAuthData();
+    Auth.clearAuthData(true);
 
     router.push("/");
   };
+
+  useEffect(() => {
+    // Check if the current path is the dashboard
+    const checkDashboardPath = () => {
+      const onDashboard = pathname.startsWith("/dashboard");
+      setIsOnDashboard(onDashboard);
+    };
+
+    checkDashboardPath();
+  }, [pathname]);
 
   if (loading || !isAuthenticated) {
     return (
@@ -25,9 +39,19 @@ export default function AuthenticatedContentWrapper({ children, title }) {
     );
   }
 
+  console.log(isOnDashboard);
+
   return (
     <div className="animate-gradient min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 pb-10">
       <Header title={title}>
+        {isAuthenticated && !isOnDashboard && (
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white bg-gray-700 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-emerald-500"
+          >
+            Dashboard
+          </Link>
+        )}
         {isAuthenticated && (
           <button
             onClick={handleLogout}

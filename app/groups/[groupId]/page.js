@@ -9,7 +9,7 @@ import {
   joinGroup, 
   leaveGroup, 
   createGroupPost 
-} from '../../utils/groupsService';
+} from '../../_core/groupsService';
 
 export default function GroupDetailPage() {
   const router = useRouter();

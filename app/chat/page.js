@@ -5,16 +5,17 @@ import { useRouter } from 'next/navigation';
 import Head from 'next/head';
 import Link from 'next/link';
 import './chat.css';
-import { getUserProfileFromIPFS, searchUserByDid } from '../utils/blockchainTransactions';
+// import { getUserProfileFromIPFS, searchUserByDid } from '../_core/blockchain/blockchainTransactions';
 // import { 
 //   initP2PNode, 
 //   subscribeToMessages, 
 //   sendMessage as sendP2PMessage,
 //   cleanup as cleanupP2P 
 // } from '../utils/p2pService';
-import { storeMessage, retrieveMessages } from '../utils/ipfsMessagingService';
+// import { storeMessage, retrieveMessages } from '../_core/utils/ipfsMessagingService';
 // import QRModal from '../_components/QRModal';
-import MessageModeSelector from '../_components/MessageModeSelector';
+import MessageModeSelector from './_components/MessageModeSelector';
+import { QrCodeIcon } from '@phosphor-icons/react';
 
 // export const metadata = {
 //   title: "Chat",
@@ -47,7 +48,7 @@ const initialMessages = {
   ],
 };
 
-export default function Home() {
+export default function ChatPage() {
   const router = useRouter();
   const [isToggled, setIsToggled] = useState(false);
   const [qrIsVisible, setQrIsVisible] = useState(false);
@@ -503,7 +504,7 @@ export default function Home() {
             />
             <button className='block hover:cursor-pointer'
               onClick={() => {setQrIsVisible(true)}}>
-              <img src={'/qr.svg'} alt="QR Code" />
+              <QrCodeIcon size={24} className="text-white hover:text-emerald-400" />
             </button>
             <button className="block md:hidden hover:cursor-pointer" onClick={() => {
               setIsToggled(!isToggled)

@@ -2,21 +2,21 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import {
-  uploadPostToIPFS,
-  storePostMetadata,
-  createImportedPost,
-  getPostComments,
-  addCommentToPost,
-  deleteComment,
-  checkFriendship,
-  checkBlockchainPostingAbility,
-  getBlockchainPostingFee,
-} from "../../utils/postsService";
+// import {
+//   uploadPostToIPFS,
+//   storePostMetadata,
+//   createImportedPost,
+//   getPostComments,
+//   addCommentToPost,
+//   deleteComment,
+//   checkFriendship,
+//   checkBlockchainPostingAbility,
+//   getBlockchainPostingFee,
+// } from "../../_core/postsService";
 
-import { createBlockchainPost } from "../../utils/blockchainPostsService";
+// import { createBlockchainPost } from "../../_core/utils/blockchainPostsService";
 import { ethers } from "ethers";
-import { verifyLocationQRCode } from "../../utils/qrCodeService";
+// import { verifyLocationQRCode } from "../../_core/utils/qrCodeService";
 
 export default function CreatePost() {
   const router = useRouter();

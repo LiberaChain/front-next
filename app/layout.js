@@ -1,9 +1,8 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "react-hot-toast";
-import { StateProvider } from "./_components/StateContext";
-import PageTransition from "./_components/PageTransition";
-// import { Inter } from "next/font/google";
+import PageTransition from "@components/PageTransition";
+// import { StateProvider } from "./_components/StateContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,8 +13,6 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
-
-// const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
   title: {
@@ -31,10 +28,10 @@ export default function RootLayout({ children }) {
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <StateProvider>
-          <PageTransition>{children}</PageTransition>
-          <Toaster position="top-right" />
-        </StateProvider>
+        {/* <StateProvider> */}
+        <PageTransition>{children}</PageTransition>
+        <Toaster position="top-right" />
+        {/* </StateProvider> */}
       </body>
     </html>
   );

@@ -16,7 +16,7 @@ export default function Header({ children, title }) {
                   height={32}
                   className="h-8 w-auto inline-block"
                 />
-                <span className="ml-2 text-white font-semibold text-lg">
+                <span className="ml-2 text-white font-semibold text-lg hidden sm:inline-block">
                   LiberaChain
                 </span>
               </Link>
