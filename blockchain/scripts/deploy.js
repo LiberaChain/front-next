@@ -1,4 +1,6 @@
 const { ethers } = require("hardhat");
+const fs = require("fs");
+const path = require("path");
 
 async function main() {
   console.log("Starting deployment of contracts...");
@@ -8,66 +10,82 @@ async function main() {
   console.log("Deploying contracts with account:", deployer.address);
   
   // Get the contract factories
-  const UserPublicKeys = await ethers.getContractFactory("UserPublicKeys");
-  const UserRegistry = await ethers.getContractFactory("UserRegistry");
-  const BlockchainPosts = await ethers.getContractFactory("BlockchainPosts");
+  const DIDRegistry = await ethers.getContractFactory("DIDRegistry");
+  const FeeAndTreasury = await ethers.getContractFactory("FeeAndTreasury");
+  const ContentManagement = await ethers.getContractFactory("ContentManagement");
+  const ObjectLifeCycle = await ethers.getContractFactory("ObjectLifecycle");
   
-  // Deploy contracts
-  console.log("Deploying UserPublicKeys contract...");
-  const userPublicKeys = await UserPublicKeys.deploy({
-    // gasPrice: ethers.utils.parseUnits('5', 'gwei'), // Lower gas price could mean our transaction takes longer to be mined
-  });
-  await userPublicKeys.deployed();
-  console.log("UserPublicKeys deployed to:", userPublicKeys.address);
+  // Deploy DIDRegistry first as other contracts depend on it
+  console.log("Deploying DIDRegistry contract...");
+  const didRegistry = await DIDRegistry.deploy();
+  await didRegistry.waitForDeployment();
+  console.log("DIDRegistry deployed to:", await didRegistry.getAddress());
   
-  console.log("Deploying UserRegistry contract...");
-  const userRegistry = await UserRegistry.deploy({
-    // gasPrice: ethers.utils.parseUnits('5', 'gwei'), // Lower gas price could mean our transaction takes longer to be mined
-  });
-  await userRegistry.deployed();
-  console.log("UserRegistry deployed to:", userRegistry.address);
+  // Deploy FeeAndTreasury next as it's needed by ObjectLifeCycle
+  console.log("Deploying FeeAndTreasury contract...");
+  const feeAndTreasury = await FeeAndTreasury.deploy(deployer.address);
+  await feeAndTreasury.waitForDeployment();
+  console.log("FeeAndTreasury deployed to:", await feeAndTreasury.getAddress());
   
-  console.log("Deploying BlockchainPosts contract...");
-  const blockchainPosts = await BlockchainPosts.deploy({
-    // gasPrice: ethers.utils.parseUnits('5', 'gwei'), // Lower gas price could mean our transaction takes longer to be mined
-  });
-  await blockchainPosts.deployed();
-  console.log("BlockchainPosts deployed to:", blockchainPosts.address);
+  // Deploy ContentManagement with DIDRegistry address
+  console.log("Deploying ContentManagement contract...");
+  const contentManagement = await ContentManagement.deploy(await didRegistry.getAddress());
+  await contentManagement.waitForDeployment();
+  console.log("ContentManagement deployed to:", await contentManagement.getAddress());
+  
+  // Deploy ObjectLifeCycle with DIDRegistry and FeeAndTreasury addresses
+  console.log("Deploying ObjectLifeCycle contract...");
+  const objectLifeCycle = await ObjectLifeCycle.deploy(
+    await didRegistry.getAddress(),
+    await feeAndTreasury.getAddress()
+  );
+  await objectLifeCycle.waitForDeployment();
+  console.log("ObjectLifeCycle deployed to:", await objectLifeCycle.getAddress());
+  
+  // Set initial fees
+  console.log("Setting initial fees...");
+  const createObjectSelector = objectLifeCycle.interface.getFunction("createObject").selector;
+  const createObjectFee = ethers.parseEther("0.001"); // 0.001 ETH fee for creating objects
+  await feeAndTreasury.setFee(createObjectSelector, createObjectFee);
+  console.log("Set fee for createObject:", ethers.formatEther(createObjectFee), "ETH");
   
   // Generate DID for the deployer
   const deployerDid = `did:ethr:${deployer.address}`;
   console.log("Deployer DID:", deployerDid);
   
-  // The deployer's public key can be derived from their address
-  // For simplicity, we'll use the wallet address with a prefix as a mock public key
-  const deployerPublicKey = `0x${deployer.address.substring(2)}`;
+  // Register deployer in DIDRegistry by creating a signature
+  console.log("Signing registration message...");
+  const registrationMessage = `Register ${deployerDid}`;
+  const messageBytes = ethers.toUtf8Bytes(registrationMessage);
   
-  // Register the deployer as a user in UserPublicKeys contract
-  console.log("Registering deployer in UserPublicKeys contract...");
-  const pkTx = await userPublicKeys.setPublicKey(deployerDid, deployerPublicKey);
-  await pkTx.wait();
-  console.log("Deployer registered in UserPublicKeys contract");
+  // Sign the raw message - contract will add the Ethereum prefix
+  const flatSig = await deployer.signMessage(messageBytes);
   
-  // Register the deployer in UserRegistry contract
-  console.log("Registering deployer in UserRegistry contract...");
-  const registryTx = await userRegistry.registerUser(deployerDid, deployerPublicKey);
-  await registryTx.wait();
-  console.log("Deployer registered in UserRegistry contract");
+  // Split the signature into its r, s, v components
+  const sig = ethers.Signature.from(flatSig);
   
-  // Save contract addresses and ABIs for frontend usage
-  const fs = require("fs");
-  const contractsDir = __dirname + "/../artifacts/contracts";
+  // Reconstruct signature in the format the contract expects
+  const signatureBytes = ethers.concat([
+    sig.r,
+    sig.s,
+    new Uint8Array([sig.v - 27]) // Contract adds 27 to v internally
+  ]);
   
-  if (!fs.existsSync(contractsDir)) {
-    fs.mkdirSync(contractsDir, { recursive: true });
-  }
+  console.log("Registering deployer in DIDRegistry...");
+  const registerTx = await didRegistry.register(messageBytes, signatureBytes);
+  await registerTx.wait();
+  console.log("Deployer registered in DIDRegistry");
+  
+  // Save contract addresses for frontend usage
+  const addressFile = path.join(__dirname, "contract-addresses.json");
   
   fs.writeFileSync(
-    contractsDir + "/contract-address.json",
+    addressFile,
     JSON.stringify({ 
-      UserPublicKeys: userPublicKeys.address,
-      UserRegistry: userRegistry.address,
-      BlockchainPosts: blockchainPosts.address,
+      DIDRegistry: await didRegistry.getAddress(),
+      FeeAndTreasury: await feeAndTreasury.getAddress(),
+      ContentManagement: await contentManagement.getAddress(),
+      ObjectLifeCycle: await objectLifeCycle.getAddress(),
       DeployerInfo: {
         address: deployer.address,
         did: deployerDid
@@ -75,7 +93,7 @@ async function main() {
     }, undefined, 2)
   );
   
-  console.log("Contract addresses saved to blockchain/artifacts/contracts/contract-address.json");
+  console.log("Contract addresses saved to:", addressFile);
   console.log("Deployer account automatically registered with DID:", deployerDid);
 }
 
