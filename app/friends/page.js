@@ -5,177 +5,314 @@ import Header from "@components/Header";
 import FriendRequests from "./_components/FriendRequests";
 import AddFriend from "./_components/AddFriend";
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/router";
+import { useRouter } from "next/navigation";
 import AuthenticatedContentWrapper from "../_components/AuthenticatedContentWrapper";
+import { useSearchParams } from "next/navigation";
+import { Friendships } from "../_core/libera/Friendships";
+import { Auth } from "../_core/auth";
+import FriendsList from "./_components/FriendsList";
 
 // export const metadata = {
 //   title: "Friends",
 // };
 
 export default function FriendsPage() {
-  //   const router = useRouter();
-  const [profileData, setProfileData] = useState(null);
-  const [ipfsProfile, setIpfsProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResult, setSearchResult] = useState(null);
-  const [searching, setSearching] = useState(false);
-  const [friendRequestResult, setFriendRequestResult] = useState(null);
-  const [processingRequest, setProcessingRequest] = useState(false);
-  const [showQrCode, setShowQrCode] = useState(false);
-  const [showQrScanner, setShowQrScanner] = useState(false);
-  const [scannerInitialized, setScannerInitialized] = useState(false);
-  const [username, setUsername] = useState("");
-  const [savingUsername, setSavingUsername] = useState(false);
-  const [usernameSuccess, setUsernameSuccess] = useState(false);
-  const [usernameError, setUsernameError] = useState(null);
-  const [ipfsStatus, setIpfsStatus] = useState(false);
-  const [showIpfsDetails, setShowIpfsDetails] = useState(false);
-  const [blockchainStatus, setBlockchainStatus] = useState(null);
-  const [showBlockchainDetails, setShowBlockchainDetails] = useState(false);
-  const [checkingBlockchain, setCheckingBlockchain] = useState(false);
-  // Friend requests state
-  const [pendingRequests, setPendingRequests] = useState([]);
-  const [loadingRequests, setLoadingRequests] = useState(false);
-  const [sentRequests, setSentRequests] = useState([]);
-  const [showFriendRequests, setShowFriendRequests] = useState(false);
-  const [processingAction, setProcessingAction] = useState({});
-  const [sendingFunds, setSendingFunds] = useState(false);
-  const [sendFundsAmount, setSendFundsAmount] = useState("");
-  const [sendFundsError, setSendFundsError] = useState(null);
-  const [sendFundsSuccess, setSendFundsSuccess] = useState(null);
-  const [selectedFriend, setSelectedFriend] = useState(null);
-  const scannerRef = useRef(null);
+    const router = useRouter();
+    const [profileData, setProfileData] = useState(null);
+    const [ipfsProfile, setIpfsProfile] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [searchResult, setSearchResult] = useState(null);
+    const [searching, setSearching] = useState(false);
+    const [friendRequestResult, setFriendRequestResult] = useState(null);
+    const [processingRequest, setProcessingRequest] = useState(false);
+    const [showQrCode, setShowQrCode] = useState(false);
+    const [showQrScanner, setShowQrScanner] = useState(false);
+    const [scannerInitialized, setScannerInitialized] = useState(false);
+    const [username, setUsername] = useState("");
+    const [savingUsername, setSavingUsername] = useState(false);
+    const [usernameSuccess, setUsernameSuccess] = useState(false);
+    const [usernameError, setUsernameError] = useState(null);
+    const [ipfsStatus, setIpfsStatus] = useState(false);
+    const [showIpfsDetails, setShowIpfsDetails] = useState(false);
+    const [blockchainStatus, setBlockchainStatus] = useState(null);
+    const [showBlockchainDetails, setShowBlockchainDetails] = useState(false);
+    const [checkingBlockchain, setCheckingBlockchain] = useState(false);
+    // Friend requests state
+    const [pendingRequests, setPendingRequests] = useState([]);
+    const [loadingRequests, setLoadingRequests] = useState(false);
+    const [sentRequests, setSentRequests] = useState([]);
+    const [showFriendRequests, setShowFriendRequests] = useState(false);
+    const [processingAction, setProcessingAction] = useState({});
+    const [sendingFunds, setSendingFunds] = useState(false);
+    const [sendFundsAmount, setSendFundsAmount] = useState("");
+    const [sendFundsError, setSendFundsError] = useState(null);
+    const [sendFundsSuccess, setSendFundsSuccess] = useState(null);
+    const [selectedFriend, setSelectedFriend] = useState(null);
+    const [friends, setFriends] = useState([]);
+    const scannerRef = useRef(null);
 
-  // Toggle QR scanner
-  const toggleQrScanner = () => {
-    if (showQrScanner) {
-      stopQrScanner();
-    } else {
-      setShowQrScanner(true);
+    const searchParams = useSearchParams();
+    const addFriendParam = searchParams.get('addFriend');
+
+    useEffect(() => {
+        if (addFriendParam && addFriendParam.length > 0) {
+            setSearchQuery(addFriendParam);
+        }
+    }, [addFriendParam]);
+
+    // Check if user is authenticated on component mount
+    useEffect(() => {
+        const checkAuth = () => {
+            try {
+                if (!Auth.isLoggedIn()) {
+                    // User is not authenticated, redirect to login
+                    router.push("/login");
+                    return;
+                }
+
+                const profileData = Auth.getIdentityData();
+                // Load user profile data
+                if (profileData) {
+                    setProfileData(profileData);
+                }
+
+                // Ensure messaging keys exist
+                // ensureMessagingKeys();
+            } catch (err) {
+                console.error("Error checking authentication:", err);
+                router.push("/login");
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        checkAuth();
+    }, [router]);
+
+    const getPending = async () => {
+        if (!profileData || !profileData.did) return;
+
+        try {
+            setLoadingRequests(true);
+            setPendingRequests([]);
+            setSentRequests([]);
+
+            // Get all friend requests (both sent and received)
+            const result = await Friendships.getPendingRequestsDids(profileData.did);
+            const friends = await Friendships.getFriendsDids(profileData.did);
+
+            console.log("Pending friend requests for DID:", profileData.did, result);
+            console.log("Friends for DID:", profileData.did, friends);
+
+            if (friends) {
+                setFriends(friends);
+            }
+
+            if (result) {
+                setPendingRequests(
+                    result
+                );
+                // setSentRequests(result.sent);
+            } else {
+                console.error("Failed to fetch friend requests:", result.error);
+            }
+        } catch (error) {
+            console.error("Error checking for friend requests:", error);
+        } finally {
+            setLoadingRequests(false);
+        }
+    };
+
+    useEffect(() => {
+        if (profileData && profileData.did) {
+            getPending();
+        }
+    }, [profileData]);
+
+    // Toggle QR scanner
+    const toggleQrScanner = () => {
+        if (showQrScanner) {
+            stopQrScanner();
+        } else {
+            setShowQrScanner(true);
+        }
+    };
+
+    // Stop QR scanner
+    const stopQrScanner = async () => {
+        try {
+            if (scannerRef.current && scannerRef.current.isScanning) {
+                await scannerRef.current.stop();
+            }
+        } catch (error) {
+            console.error("Error stopping QR scanner:", error);
+        }
+        setShowQrScanner(false);
+    };
+
+    // Handle search for user by DID
+    const handleSearch = async () => {
+        if (!searchQuery || !searchQuery.trim()) return;
+
+        try {
+            setSearching(true);
+            setSearchResult(null);
+
+            console.log("Searching for user with DID:", searchQuery);
+
+            if (!profileData || !profileData.did) {
+                console.error("No profile data available for searching.");
+                setSearchResult({ error: "No profile data available" });
+                return;
+            }
+
+            const result = await Friendships.addFriendRequest(profileData.did, searchQuery);
+            setSearchResult({
+                found: true,
+                did: searchQuery,
+                success: true,
+            });
+            setFriendRequestResult({
+                found: true,
+                did: searchQuery,
+                success: true,
+            });
+
+            setFriends((prevFriends) => {
+                // Add new friend if not already in the list
+                if (!prevFriends.includes(searchQuery)) {
+                    return [...prevFriends, searchQuery];
+                }
+                return prevFriends;
+            });
+
+            // // Format the query as a DID if it's not already
+            // const formattedQuery = searchQuery.startsWith("did:ethr:")
+            //     ? searchQuery
+            //     : `did:ethr:${searchQuery}`;
+
+            // // Search for user by DID
+            // const result = await searchUserByDid(formattedQuery);
+            // setSearchResult(result);
+        } catch (error) {
+            console.error("Error searching for user:", error);
+            setSearchResult({ error: "Error searching for user. " + error.message });
+        } finally {
+            setSearching(false);
+        }
+    };
+
+    // Check for pending friend requests
+    const checkForFriendRequests = async () => {
+        if (!profileData || !profileData.did) return;
+
+        try {
+            setLoadingRequests(true);
+
+            // Get all friend requests (both sent and received)
+            const result = await getAllFriendRequests();
+
+            if (result.success) {
+                setPendingRequests(
+                    result.received.filter((req) => req.status === "pending")
+                );
+                setSentRequests(result.sent);
+            } else {
+                console.error("Failed to fetch friend requests:", result.error);
+            }
+        } catch (error) {
+            console.error("Error checking for friend requests:", error);
+        } finally {
+            setLoadingRequests(false);
+        }
+    };
+
+    // Handle friend request
+    const handleFriendRequest = async () => {
+        if (!searchResult || !searchResult.found) return;
+
+        try {
+            setProcessingRequest(true);
+
+            // Create friend request with encrypted symmetric key
+            const result = await createFriendRequest(
+                searchResult.did,
+                searchResult.publicKey
+            );
+
+            // Log the result to console for copying
+            console.log(
+                "Friend request data (copy this):",
+                JSON.stringify(result, null, 2)
+            );
+
+            // Set the result for display
+            setFriendRequestResult(result);
+        } catch (error) {
+            console.error("Error creating friend request:", error);
+            setFriendRequestResult({ error: error.message });
+        } finally {
+            setProcessingRequest(false);
+        }
+    };
+
+    const onAccept = async (did) => {
+        if (!did || !profileData || !profileData.did) return;
+
+        try {
+            setProcessingAction({ type: 'accept', did, processing: true });
+
+            // Accept the friend request
+            await Friendships.acceptFriendRequest(profileData.did, did);
+
+            console.log("Friend request accepted:", did);
+            // Refresh pending requests
+            await getPending();
+        } catch (error) {
+            console.error("Error accepting friend request:", error);
+        } finally {
+            setProcessingAction({ type: 'accept', did, processing: false });
+        }
     }
-  };
 
-  // Stop QR scanner
-  const stopQrScanner = async () => {
-    try {
-      if (scannerRef.current && scannerRef.current.isScanning) {
-        await scannerRef.current.stop();
-      }
-    } catch (error) {
-      console.error("Error stopping QR scanner:", error);
+    const onReject = async (did) => {
+
     }
-    setShowQrScanner(false);
-  };
 
-  // Handle search for user by DID
-  const handleSearch = async () => {
-    if (!searchQuery || !searchQuery.trim()) return;
+    return (
+        <AuthenticatedContentWrapper title="Friends">
+            <FriendRequests
+                pendingRequests={pendingRequests}
+                sentRequests={sentRequests}
+                loadingRequests={loadingRequests}
+                processingAction={processingAction}
+                onAccept={onAccept}
+                onReject={onReject}
+                setShowFriendRequests={setShowFriendRequests}
+            />
 
-    try {
-      setSearching(true);
-      setSearchResult(null);
+            <AddFriend
+                profileData={profileData}
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+                handleSearch={handleSearch}
+                searching={searching}
+                searchResult={searchResult}
+                handleFriendRequest={handleFriendRequest}
+                processingRequest={processingRequest}
+                friendRequestResult={friendRequestResult}
+                showQrScanner={showQrScanner}
+                toggleQrScanner={toggleQrScanner}
+                stopQrScanner={stopQrScanner}
+                ipfsStatus={ipfsStatus}
+            />
 
-      // Format the query as a DID if it's not already
-      const formattedQuery = searchQuery.startsWith("did:ethr:")
-        ? searchQuery
-        : `did:ethr:${searchQuery}`;
+            <FriendsList
+                loading={loading}
+                friends={friends} />
 
-      // Search for user by DID
-      const result = await searchUserByDid(formattedQuery);
-      setSearchResult(result);
-
-      if (!result) {
-        console.log("User not found with DID:", formattedQuery);
-      }
-    } catch (error) {
-      console.error("Error searching for user:", error);
-      setSearchResult({ error: "Error searching for user" });
-    } finally {
-      setSearching(false);
-    }
-  };
-
-  // Check for pending friend requests
-  const checkForFriendRequests = async () => {
-    if (!profileData || !profileData.did) return;
-
-    try {
-      setLoadingRequests(true);
-
-      // Get all friend requests (both sent and received)
-      const result = await getAllFriendRequests();
-
-      if (result.success) {
-        setPendingRequests(
-          result.received.filter((req) => req.status === "pending")
-        );
-        setSentRequests(result.sent);
-      } else {
-        console.error("Failed to fetch friend requests:", result.error);
-      }
-    } catch (error) {
-      console.error("Error checking for friend requests:", error);
-    } finally {
-      setLoadingRequests(false);
-    }
-  };
-
-  // Handle friend request
-  const handleFriendRequest = async () => {
-    if (!searchResult || !searchResult.found) return;
-
-    try {
-      setProcessingRequest(true);
-
-      // Create friend request with encrypted symmetric key
-      const result = await createFriendRequest(
-        searchResult.did,
-        searchResult.publicKey
-      );
-
-      // Log the result to console for copying
-      console.log(
-        "Friend request data (copy this):",
-        JSON.stringify(result, null, 2)
-      );
-
-      // Set the result for display
-      setFriendRequestResult(result);
-    } catch (error) {
-      console.error("Error creating friend request:", error);
-      setFriendRequestResult({ error: error.message });
-    } finally {
-      setProcessingRequest(false);
-    }
-  };
-
-  return (
-    <AuthenticatedContentWrapper title="Friends">
-      <FriendRequests
-        pendingRequests={pendingRequests}
-        sentRequests={sentRequests}
-        loadingRequests={loadingRequests}
-        processingAction={processingAction}
-        setShowFriendRequests={setShowFriendRequests}
-      />
-
-      <AddFriend
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-        handleSearch={handleSearch}
-        searching={searching}
-        searchResult={searchResult}
-        handleFriendRequest={handleFriendRequest}
-        processingRequest={processingRequest}
-        friendRequestResult={friendRequestResult}
-        showQrScanner={showQrScanner}
-        toggleQrScanner={toggleQrScanner}
-        stopQrScanner={stopQrScanner}
-        ipfsStatus={ipfsStatus}
-      />
-
-      <div className="bg-gray-800 rounded-lg shadow p-6 border border-gray-700">
+            {/* <div className="bg-gray-800 rounded-lg shadow p-6 border border-gray-700">
         <h2 className="text-lg font-medium text-white">
           Friend Requests Troubleshooting
         </h2>
@@ -340,7 +477,6 @@ export default function FriendsPage() {
             Print Storage Debug Info to Console
           </button>
 
-          {/* New section to view all IPFS content */}
           <div className="mt-4">
             <h3 className="text-sm font-medium text-white flex items-center justify-between">
               <span>Raw IPFS Friend Requests</span>
@@ -453,7 +589,6 @@ export default function FriendsPage() {
             </div>
           </div>
 
-          {/* Display all processed requests tracking */}
           <div className="mt-4">
             <h3 className="text-sm font-medium text-white flex items-center justify-between">
               <span>Processed Request Tracking</span>
@@ -566,7 +701,7 @@ export default function FriendsPage() {
             </div>
           </div>
         </div>
-      </div>
-    </AuthenticatedContentWrapper>
-  );
+      </div> */}
+        </AuthenticatedContentWrapper>
+    );
 }

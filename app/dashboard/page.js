@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 // import {
 //   searchUserByDid,
 //   createFriendRequest,
@@ -24,6 +24,7 @@ import QuickActions from "./_components/QuickActions";
 import NetworkStatus from "./_components/NetworkStatus";
 import { FilebaseIPFSProvider } from "../_core/storage/ipfs/FilebaseIPFSService";
 import { Profiles } from "../_core/libera/Profiles";
+import { Friendships } from "../_core/libera/Friendships";
 
 export default function DashboardPage() {
     const router = useRouter();
@@ -31,6 +32,8 @@ export default function DashboardPage() {
     const [loading, setLoading] = useState(true);
     const [profileData, setProfileData] = useState(null);
     const [ipfsProfile, setIpfsProfile] = useState(null);
+    const [pendingRequests, setPendingRequests] = useState([]);
+
     // const [searchQuery, setSearchQuery] = useState("");
     // const [searchResult, setSearchResult] = useState(null);
     // const [searching, setSearching] = useState(false);
@@ -97,6 +100,14 @@ export default function DashboardPage() {
 
                 console.log("IPFS Profile Data:", profile);
                 setIpfsProfile(profile);
+
+                const pendingFriendRequests = await Friendships.getPendingRequests(
+                    profileData.did
+                );
+                console.log("Pending Friend Requests:", pendingFriendRequests);
+
+                setPendingRequests(pendingFriendRequests);
+
             } catch (error) {
                 console.error("Error loading profile data:", error);
             }
@@ -400,7 +411,7 @@ export default function DashboardPage() {
                 />
 
                 <QuickActions
-                    pendingRequests={null /*pendingRequests*/}
+                    pendingRequestsCount={pendingRequests?.length}
                     showFriendRequests={null /*showFriendRequests*/}
                     setShowFriendRequests={null /*setShowFriendRequests*/}
                     checkForFriendRequests={null /*checkForFriendRequests*/}

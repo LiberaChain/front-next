@@ -236,6 +236,17 @@ export class FilebaseIPFSProvider {
             throw new Error("File content cannot be undefined or null.");
         }
 
+        // Check if we need to convert fileContent from object to JSON
+        if (typeof fileContent === 'object' && !(fileContent instanceof Buffer) && !(fileContent instanceof ReadableStream)) {
+            try {
+                fileContent = JSON.stringify(fileContent);
+                console.debug(`Converted file content to JSON string for upload: ${filePath}`);
+            } catch (error) {
+                console.error(`Failed to convert file content to JSON for upload: ${filePath}`, error);
+                throw new Error("Failed to convert file content to JSON for upload.");
+            }
+        }
+
         const params = {
             Bucket: this.bucketName,
             Key: filePath,

@@ -1,8 +1,8 @@
-import { CheckIcon, CircleNotchIcon, CrossIcon, PencilSimpleIcon, QrCodeIcon, UserCircleIcon, XIcon } from "@phosphor-icons/react";
-import { QRCodeCanvas } from "qrcode.react";
+import { CheckIcon, CircleNotchIcon, PencilSimpleIcon, UserCircleIcon, XIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
-import { Profiles } from "@core/libera/Profiles";
 import IPFSCIDLink from "@/app/_components/IPFSCIDLink";
+import RevealableQR from "@/app/_components/RevealableQR";
+import { INSTANCE_URL } from "@/app/_core/constants";
 
 export default function UserProfile({ profileData, ipfsProfile, onIpsfProfileChange }) {
     const [showQrCode, setShowQrCode] = useState(false);
@@ -30,13 +30,14 @@ export default function UserProfile({ profileData, ipfsProfile, onIpsfProfileCha
     const generateQrCodeUrl = (did) => {
         // If running in a deployed environment, use the actual domain
         // For development, use localhost
-        const baseUrl =
-            typeof window !== "undefined"
-                ? window.location.origin
-                : "http://localhost:3000";
+        const baseUrl = INSTANCE_URL;
+
+        const qrCodeUrl = `${baseUrl}/friends?addFriend=${encodeURIComponent(did)}`;
+
+        console.debug("Generating QR code URL:", qrCodeUrl);
 
         // Create a URL that will open the app and navigate to the dashboard with the DID as a parameter
-        return `${baseUrl}/dashboard?addFriend=${encodeURIComponent(did)}`;
+        return qrCodeUrl;
     };
 
     return (
@@ -122,13 +123,13 @@ export default function UserProfile({ profileData, ipfsProfile, onIpsfProfileCha
             <div className="mt-6">
                 <div className="flex justify-between items-center">
                     <h3 className="text-sm font-medium text-gray-300">Your DID</h3>
-                    <button
+                    {/* <button
                         onClick={() => setShowQrCode(!showQrCode)}
                         className="text-xs px-3 text-emerald-400 hover:text-emerald-300 flex items-center outline focus:outline-none focus:ring-2 focus:ring-emerald-500 rounded-md p-1 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <QrCodeIcon className="h-4 w-4 mr-1" weight="bold" />
                         {showQrCode ? "Hide QR code" : "Reveal QR code"}
-                    </button>
+                    </button> */}
                 </div>
                 <div className="mt-1 bg-gray-700 rounded-md p-2">
                     <code className="text-xs text-emerald-400 break-all">
@@ -136,29 +137,13 @@ export default function UserProfile({ profileData, ipfsProfile, onIpsfProfileCha
                     </code>
                 </div>
 
-                {showQrCode && profileData?.did && (
-                    <div className="mt-4 flex justify-center flex-col items-center">
-                        <div className="bg-white p-4 rounded-lg">
-                            <QRCodeCanvas
-                                value={generateQrCodeUrl(profileData.did)}
-                                size={250}
-                                level="M"
-                                imageSettings={{
-                                    src: "/logo-dark.svg", // Path to your logo
-                                    height: 70,
-                                    width: 70,
-                                    excavate: true, // Ensures the logo doesn't obscure the QR code
-                                }}
-                            />
-                        </div>
-                        <p className="mt-2 text-xs text-gray-400">
-                            Scan with any camera app to add as friend. Show at places that
-                            support LiberaChain to get extra benefits!
-                            <br />
-                            QR code dissappears after 15 seconds.
-                        </p>
-                    </div>
-                )}
+                <RevealableQR
+                    qrData={generateQrCodeUrl(profileData?.did)}
+                    image="/logo-dark.svg"
+                    className="mt-4"
+                    footnote="Show at places that support LiberaChain to get extra benefits!"
+                    displayDurationSeconds={15} // QR code will hide after 15 seconds
+                />
             </div>
 
             <div className="mt-4">

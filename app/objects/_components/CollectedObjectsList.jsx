@@ -1,8 +1,6 @@
 "use client";
 
 import IPFSCIDLink from "@/app/_components/IPFSCIDLink";
-import RevealableQR from "@/app/_components/RevealableQR";
-import { INSTANCE_URL } from "@/app/_core/constants";
 import { BarcodeIcon, QrCodeIcon } from "@phosphor-icons/react";
 import { useState, useEffect } from "react";
 
@@ -152,20 +150,22 @@ export default function ObjectsList({ onObjectSelect, refreshTrigger }) {
               )}
             </div>
 
-            <div className="mt-2 flex">
-              <button className="bg-gray-600 text-white text-sm px-4 py-2 rounded hover:bg-gray-700 transition-colors">
+            <div className="mt-2 flex justify-end">
+              <button
+                className="bg-emerald-500 text-white text-sm px-4 py-2 rounded hover:bg-emerald-600 transition-colors"
+                onClick={() => toggleQR(object.id)}
+              >
+                <QrCodeIcon size={20} className="inline mr-1 mb-1" />
+                Reveal QR Code
+              </button>
+              <button
+                className="ml-2 bg-gray-600 text-white text-sm px-4 py-2 rounded hover:bg-gray-700 transition-colors"
+                onClick={() => toggleScanner(object.id)}
+              >
                 <BarcodeIcon size={20} className="inline mr-1 mb-1" />
                 Enable code scanner
               </button>
             </div>
-
-            <RevealableQR
-              qrData={`${INSTANCE_URL}/objects?redeem=${encodeURIComponent(
-                object.did
-              )}&key=${encodeURIComponent(object.privateKey)}`}
-              image="/logo-dark.svg"
-              className="mt-4"
-            />
           </div>
         ))}
       </div>

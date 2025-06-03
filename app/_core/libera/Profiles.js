@@ -1,15 +1,21 @@
 import { FilebaseIPFSProvider } from "@core/storage/ipfs/FilebaseIPFSService";
 
 export class Profiles {
-    static async getProfile(did) {
+    static async getProfile(did, allowCached = false) {
         if (!did) {
             throw new Error("DID is required to get a profile.");
         }
 
-        // const profile = localStorage.getItem(`profile:${did}`);
-        // if (profile) {
-        //     return JSON.parse(profile);
-        // }
+        if (allowCached) {
+            const cachedProfiles = localStorage.getItem('liberaChainProfiles');
+            if (cachedProfiles) {
+                const profiles = JSON.parse(cachedProfiles);
+                if (profiles[did]) {
+                    console.debug(`Profile fetched from cache for DID ${did}`, profiles[did]);
+                    return profiles[did];
+                }
+            }
+        }
 
         const ipfs = FilebaseIPFSProvider.getInstance();
         const cid = await ipfs.getLatestCID(`profiles/${did}`);
@@ -20,12 +26,16 @@ export class Profiles {
 
             console.debug(`Profile fetched for DID ${did}. IPFS CID: ${cid}`, profileData);
 
-            // localStorage.setItem(`profile:${did}`, JSON.stringify(profileData));
+            profileData.cid = cid;
 
-            return {
-                ...profileData,
-                cid: cid
-            };
+            // Cache
+            const cachedProfiles = localStorage.getItem('liberaChainProfiles');
+            const profiles = cachedProfiles ? JSON.parse(cachedProfiles) : {};
+            profiles[did] = profileData;
+            localStorage.setItem('liberaChainProfiles', JSON.stringify(profiles));
+            console.debug(`Profile cached for DID ${did}`, profileData);
+
+            return profileData;
         }
 
         return null;

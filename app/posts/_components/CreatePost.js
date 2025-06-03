@@ -6,6 +6,7 @@ import { ethers } from "ethers";
 import { BlockchainPosts } from "@/app/_core/blockchain/BlockchainPosts";
 import { Posts } from "@/app/_core/libera/Posts";
 import { Auth } from "@/app/_core/auth";
+import { QrCodeIcon } from "@phosphor-icons/react";
 
 export default function CreatePost() {
     const router = useRouter();
@@ -316,7 +317,7 @@ export default function CreatePost() {
             setSuccess("");
 
             // Create imported post
-            const result = await createImportedPost(
+            const result = await Posts.createImportedPost(
                 {
                     url: importUrl,
                     comment: importComment,
@@ -989,12 +990,13 @@ export default function CreatePost() {
                                 <button
                                     type="button"
                                     onClick={toggleQrScanner}
-                                    className={`text-xs px-3 py-1 rounded-md ${showQrScanner
+                                    className={`text-xs px-2 py-1 rounded-md flex items-center
+                                         ${showQrScanner
                                         ? "bg-red-600 text-white"
                                         : "bg-blue-600 text-white hover:bg-blue-700"
                                         }`}
                                 >
-                                    {showQrScanner ? "Cancel Scanning" : "Scan QR Code"}
+                                    {showQrScanner ? "Cancel Scanning" : (<><QrCodeIcon className="inline h-5 w-5 mr-1" />Scan QR Code</>)}
                                 </button>
                             </div>
 
