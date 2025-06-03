@@ -2,6 +2,7 @@ import { ethers } from "ethers";
 import { LOCALSTORAGE_LIBERACHAIN_BROWSER_WALLET } from "../constants";
 
 // This provides utilities required for manipulating browser-based wallet. The wallet is stored in localStorage and can be used to sign messages, verify signatures, and recover from a mnemonic phrase.
+// This is based on the BIP-39 standard for mnemonic phrases and uses the ethers.js library for cryptographic operations.
 
 export class BrowserWallet {
   constructor(data) {

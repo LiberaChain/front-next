@@ -84,7 +84,7 @@ console.log("[DEBUG] Using contract addresses:", contractAddresses);
 export const getProviderAndSigner = async () => {
   if (typeof window === "undefined") {
     // Server-side rendering - use a provider for the testnet
-    const provider = new ethers.providers.JsonRpcProvider(
+    const provider = new ethers.JsonRpcProvider(
       process.env.NEXT_PUBLIC_RPC_URL || "http://localhost:8545"
     );
     return { provider, signer: null, account: null };
@@ -96,7 +96,7 @@ export const getProviderAndSigner = async () => {
       "MetaMask is not installed. Some functionality may be limited."
     );
     // Fallback to a read-only provider
-    const provider = new ethers.providers.JsonRpcProvider(
+    const provider = new ethers.JsonRpcProvider(
       process.env.NEXT_PUBLIC_RPC_URL || "http://localhost:8545"
     );
     return { provider, signer: null, account: null };
@@ -107,7 +107,7 @@ export const getProviderAndSigner = async () => {
     await window.ethereum.request({ method: "eth_requestAccounts" });
 
     // Initialize provider with MetaMask
-    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    const provider = new ethers.Web3Provider(window.ethereum);
     const signer = provider.getSigner();
     const account = await signer.getAddress();
 
@@ -115,7 +115,7 @@ export const getProviderAndSigner = async () => {
   } catch (error) {
     console.error("Error connecting to MetaMask:", error);
     // Fallback to a read-only provider
-    const provider = new ethers.providers.JsonRpcProvider(
+    const provider = new ethers.JsonRpcProvider(
       process.env.NEXT_PUBLIC_RPC_URL || "http://localhost:8545"
     );
     return { provider, signer: null, account: null };
@@ -751,7 +751,7 @@ export const checkWalletNetwork = async () => {
       };
     }
 
-    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    const provider = new ethers.Web3Provider(window.ethereum);
     const network = await provider.getNetwork();
     console.log("[DEBUG] Wallet connected to network:", network);
 

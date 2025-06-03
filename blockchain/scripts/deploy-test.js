@@ -15,21 +15,21 @@ async function main() {
   // Deploy contracts
   console.log("Deploying UserPublicKeys contract...");
   const userPublicKeys = await UserPublicKeys.deploy({
-    // gasPrice: ethers.utils.parseUnits('5', 'gwei'), // Lower gas price could mean our transaction takes longer to be mined
+    // gasPrice: ethers.parseUnits('5', 'gwei'), // Lower gas price could mean our transaction takes longer to be mined
   });
   await userPublicKeys.deployed();
   console.log("UserPublicKeys deployed to:", userPublicKeys.address);
   
   console.log("Deploying UserRegistry contract...");
   const userRegistry = await UserRegistry.deploy({
-    // gasPrice: ethers.utils.parseUnits('5', 'gwei'), // Lower gas price could mean our transaction takes longer to be mined
+    // gasPrice: ethers.parseUnits('5', 'gwei'), // Lower gas price could mean our transaction takes longer to be mined
   });
   await userRegistry.deployed();
   console.log("UserRegistry deployed to:", userRegistry.address);
   
   console.log("Deploying BlockchainPosts contract...");
   const blockchainPosts = await BlockchainPosts.deploy({
-    // gasPrice: ethers.utils.parseUnits('5', 'gwei'), // Lower gas price could mean our transaction takes longer to be mined
+    // gasPrice: ethers.parseUnits('5', 'gwei'), // Lower gas price could mean our transaction takes longer to be mined
   });
   await blockchainPosts.deployed();
   console.log("BlockchainPosts deployed to:", blockchainPosts.address);

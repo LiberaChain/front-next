@@ -10,7 +10,7 @@
     "lint": "next lint",
     "eth:compile": "hardhat compile",
     "eth:test": "hardhat test",
-    "eth:deploy": "hardhat run blockchain/scripts/deploy.js --network localhost",
+    "eth:deploy": "hardhat run blockchain/scripts/deploy.js --network holesky",
     "ipfs:start": "docker-compose up -d",
     "ipfs:stop": "docker-compose down",
     "ipfs:logs": "docker-compose logs -f",

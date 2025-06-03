@@ -9,26 +9,26 @@ const encryptMessage = async (message, recipientPublicKey) => {
     const ephemeralWallet = ethers.Wallet.createRandom();
     
     // Create a shared secret using ECDH
-    const publicKeyBytes = ethers.utils.arrayify(recipientPublicKey);
-    const sharedSecret = ethers.utils.keccak256(
-      ethers.utils.arrayify(
+    const publicKeyBytes = ethers.arrayify(recipientPublicKey);
+    const sharedSecret = ethers.keccak256(
+      ethers.arrayify(
         await ephemeralWallet.signMessage(publicKeyBytes)
       )
     );
 
     // Use the shared secret to encrypt the message
-    const messageBytes = ethers.utils.toUtf8Bytes(message);
-    const encryptedData = ethers.utils.arrayify(
-      ethers.utils.keccak256(
-        ethers.utils.concat([
-          ethers.utils.arrayify(sharedSecret),
+    const messageBytes = ethers.toUtf8Bytes(message);
+    const encryptedData = ethers.arrayify(
+      ethers.keccak256(
+        ethers.concat([
+          ethers.arrayify(sharedSecret),
           messageBytes
         ])
       )
     );
 
     return {
-      encrypted: ethers.utils.hexlify(encryptedData),
+      encrypted: ethers.hexlify(encryptedData),
       ephemeralPubKey: ephemeralWallet.publicKey
     };
   } catch (error) {
@@ -47,24 +47,24 @@ const decryptMessage = async (encryptedMessage, ephemeralPubKey) => {
 
     // Recreate the shared secret using our private key and the ephemeral public key
     const wallet = new ethers.Wallet(keys.privateKey);
-    const publicKeyBytes = ethers.utils.arrayify(ephemeralPubKey);
-    const sharedSecret = ethers.utils.keccak256(
-      ethers.utils.arrayify(
+    const publicKeyBytes = ethers.arrayify(ephemeralPubKey);
+    const sharedSecret = ethers.keccak256(
+      ethers.arrayify(
         await wallet.signMessage(publicKeyBytes)
       )
     );
 
     // Decrypt the message
-    const decryptedBytes = ethers.utils.arrayify(
-      ethers.utils.keccak256(
-        ethers.utils.concat([
-          ethers.utils.arrayify(sharedSecret),
-          ethers.utils.arrayify(encryptedMessage)
+    const decryptedBytes = ethers.arrayify(
+      ethers.keccak256(
+        ethers.concat([
+          ethers.arrayify(sharedSecret),
+          ethers.arrayify(encryptedMessage)
         ])
       )
     );
 
-    return ethers.utils.toUtf8String(decryptedBytes);
+    return ethers.toUtf8String(decryptedBytes);
   } catch (error) {
     console.error('Error decrypting message:', error);
     throw error;

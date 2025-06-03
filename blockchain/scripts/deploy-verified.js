@@ -11,7 +11,7 @@ async function main() {
   console.log("Deploying BlockchainPosts contract with signature verification...");
   const BlockchainPosts = await ethers.getContractFactory("BlockchainPosts");
   const blockchainPosts = await BlockchainPosts.deploy({
-    // gasPrice: ethers.utils.parseUnits('5', 'gwei'),
+    // gasPrice: ethers.parseUnits('5', 'gwei'),
   });
   await blockchainPosts.deployed();
   console.log("BlockchainPosts deployed to:", blockchainPosts.address);

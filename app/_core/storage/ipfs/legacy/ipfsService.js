@@ -1,18 +1,10 @@
 // IPFS Service for user profile storage using IPFS HTTP gateway
 import {
-  uploadToIpfs,
-  getFromIpfs,
-  publishToIpns as publishToNode,
-  createIpnsKey,
-  resolveIpnsName,
-} from "./ipfs-http";
-import {
-  publishToIpns,
-  resolveIpns,
   getLatestContent,
   updateContent,
 } from "./ipns-service";
-import { pinContent, unpinContent } from "./ipfs-pin-service";
+import { pinContent } from "./ipfs-pin-service";
+import { getS3Gateway } from "@core/storage/ipfs/s3Config";
 
 /**
  * Check if IPFS is available
@@ -283,9 +275,6 @@ const checkFileExists = async (filename) => {
     return false;
   }
 };
-
-// IPFS Service for interacting with IPFS/S3 storage
-import { getS3Gateway, hasS3Credentials } from "./s3Config";
 
 // Store content on IPFS/S3
 export const uploadPostToIPFS = async (postData) => {

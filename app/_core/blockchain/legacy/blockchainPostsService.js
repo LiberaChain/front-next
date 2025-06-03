@@ -43,7 +43,7 @@ export const getBlockchainPostFee = async () => {
   try {
     const contract = await getBlockchainPostsContract(false);
     const feeWei = await contract.getPostFee();
-    const feeEth = ethers.utils.formatEther(feeWei);
+    const feeEth = ethers.formatEther(feeWei);
     
     return {
       success: true,
@@ -94,8 +94,8 @@ export const createBlockchainPost = async (postData, options = {}) => {
     const donationAmount = options.donationAmount || '0';
     
     // Calculate total transaction value (fee + donation)
-    const totalValue = ethers.utils.parseEther(feeResult.fee).add(
-      ethers.utils.parseEther(donationAmount)
+    const totalValue = ethers.parseEther(feeResult.fee).add(
+      ethers.parseEther(donationAmount)
     );
     
     // Prepare transaction options
@@ -103,15 +103,15 @@ export const createBlockchainPost = async (postData, options = {}) => {
       value: totalValue,
       ...options,
       gasLimit: options.gasLimit || 500000,
-      maxFeePerGas: options.maxFeePerGas || ethers.utils.parseUnits('20', 'gwei'),
-      maxPriorityFeePerGas: options.maxPriorityFeePerGas || ethers.utils.parseUnits('1.5', 'gwei')
+      maxFeePerGas: options.maxFeePerGas || ethers.parseUnits('20', 'gwei'),
+      maxPriorityFeePerGas: options.maxPriorityFeePerGas || ethers.parseUnits('1.5', 'gwei')
     };
     
     console.log('Creating blockchain post with options:', {
-      value: ethers.utils.formatEther(totalValue),
+      value: ethers.formatEther(totalValue),
       ...txOptions,
-      maxFeePerGas: txOptions.maxFeePerGas ? ethers.utils.formatUnits(txOptions.maxFeePerGas, 'gwei') + ' gwei' : undefined,
-      maxPriorityFeePerGas: txOptions.maxPriorityFeePerGas ? ethers.utils.formatUnits(txOptions.maxPriorityFeePerGas, 'gwei') + ' gwei' : undefined
+      maxFeePerGas: txOptions.maxFeePerGas ? ethers.formatUnits(txOptions.maxFeePerGas, 'gwei') + ' gwei' : undefined,
+      maxPriorityFeePerGas: txOptions.maxPriorityFeePerGas ? ethers.formatUnits(txOptions.maxPriorityFeePerGas, 'gwei') + ' gwei' : undefined
     });
     
     // Create transaction with fee + donation and gas settings
@@ -157,8 +157,8 @@ export const createBlockchainPost = async (postData, options = {}) => {
       transactionHash: tx.hash,
       blockNumber: receipt.blockNumber,
       postId: postId || `unknown-${Date.now()}`,
-      postIdHex: postId ? ethers.utils.hexlify(postId) : null,
-      donation: donationValue ? ethers.utils.formatEther(donationValue) : donationAmount,
+      postIdHex: postId ? ethers.hexlify(postId) : null,
+      donation: donationValue ? ethers.formatEther(donationValue) : donationAmount,
       verified: isVerified
     };
   } catch (error) {
@@ -184,7 +184,7 @@ export const getBlockchainPost = async (postId) => {
     const jsTimestamp = Number(timestamp) * 1000;
 
     // Convert donation from wei to ETH
-    const donationEth = ethers.utils.formatEther(donation);
+    const donationEth = ethers.formatEther(donation);
 
     return {
       success: true,
@@ -329,17 +329,17 @@ export const checkBalanceForPosting = async () => {
       throw new Error('Failed to get required fee');
     }
     
-    const requiredFee = ethers.utils.parseEther(feeResult.fee);
-    const requiredTotal = requiredFee.add(ethers.utils.parseEther('0.001')); // Add some for gas
+    const requiredFee = ethers.parseEther(feeResult.fee);
+    const requiredTotal = requiredFee.add(ethers.parseEther('0.001')); // Add some for gas
     
     const hasBalance = balance.gte(requiredTotal);
     
     return {
       success: true,
       hasBalance,
-      balance: ethers.utils.formatEther(balance),
-      required: ethers.utils.formatEther(requiredTotal),
-      fee: ethers.utils.formatEther(requiredFee)
+      balance: ethers.formatEther(balance),
+      required: ethers.formatEther(requiredTotal),
+      fee: ethers.formatEther(requiredFee)
     };
   } catch (error) {
     console.error('Error checking balance:', error);

@@ -33,7 +33,7 @@ export class IPFSProxyService {
   }
 
   getS3Gateway() {
-    return process.env.NEXT_PUBLIC_S3_GATEWAY || "https://s3.filebase.com";
+    return process.env.NEXT_PUBLIC_S3_ENDPOINT || "https://s3.filebase.com";
   }
 
   getLocalStorageItemCount() {

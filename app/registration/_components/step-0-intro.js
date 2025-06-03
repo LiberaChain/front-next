@@ -1,3 +1,5 @@
+"use client";
+
 import { WALLET_TYPE_BROWSER, WALLET_TYPE_ETHEREUM } from "@core/constants";
 import { BrowserWallet } from "@core/wallet/browserWallet";
 import { EthereumWallet } from "@core/wallet/ethereumWallet";

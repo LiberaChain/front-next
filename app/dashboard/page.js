@@ -22,370 +22,391 @@ import { CircleNotchIcon } from "@phosphor-icons/react/dist/ssr";
 import UserProfile from "./_components/UserProfile";
 import QuickActions from "./_components/QuickActions";
 import NetworkStatus from "./_components/NetworkStatus";
+import { FilebaseIPFSProvider } from "../_core/storage/ipfs/FilebaseIPFSService";
+import { Profiles } from "../_core/libera/Profiles";
 
 export default function DashboardPage() {
-  const router = useRouter();
-  const auth = useRequireAuth();
-  const [loading, setLoading] = useState(true);
-  const [profileData, setProfileData] = useState(null);
-  // const [ipfsProfile, setIpfsProfile] = useState(null);
-  // const [searchQuery, setSearchQuery] = useState("");
-  // const [searchResult, setSearchResult] = useState(null);
-  // const [searching, setSearching] = useState(false);
-  // const [friendRequestResult, setFriendRequestResult] = useState(null);
-  // const [processingRequest, setProcessingRequest] = useState(false);
-  // const [showQrCode, setShowQrCode] = useState(false);
-  // const [showQrScanner, setShowQrScanner] = useState(false);
-  // const [scannerInitialized, setScannerInitialized] = useState(false);
-  // const [username, setUsername] = useState("");
-  // const [savingUsername, setSavingUsername] = useState(false);
-  // const [usernameSuccess, setUsernameSuccess] = useState(false);
-  // const [usernameError, setUsernameError] = useState(null);
-  // const [ipfsStatus, setIpfsStatus] = useState(getIpfsStatus());
-  // const [showIpfsDetails, setShowIpfsDetails] = useState(false);
-  // const [blockchainStatus, setBlockchainStatus] = useState(null);
-  // const [showBlockchainDetails, setShowBlockchainDetails] = useState(false);
-  // const [checkingBlockchain, setCheckingBlockchain] = useState(false);
-  // // Friend requests state
-  // const [pendingRequests, setPendingRequests] = useState([]);
-  // const [loadingRequests, setLoadingRequests] = useState(false);
-  // const [sentRequests, setSentRequests] = useState([]);
-  // const [showFriendRequests, setShowFriendRequests] = useState(false);
-  // const [processingAction, setProcessingAction] = useState({});
-  // const [sendingFunds, setSendingFunds] = useState(false);
-  // const [sendFundsAmount, setSendFundsAmount] = useState("");
-  // const [sendFundsError, setSendFundsError] = useState(null);
-  // const [sendFundsSuccess, setSendFundsSuccess] = useState(null);
-  // const [selectedFriend, setSelectedFriend] = useState(null);
-  // const scannerRef = useRef(null);
+    const router = useRouter();
+    const auth = useRequireAuth();
+    const [loading, setLoading] = useState(true);
+    const [profileData, setProfileData] = useState(null);
+    const [ipfsProfile, setIpfsProfile] = useState(null);
+    // const [searchQuery, setSearchQuery] = useState("");
+    // const [searchResult, setSearchResult] = useState(null);
+    // const [searching, setSearching] = useState(false);
+    // const [friendRequestResult, setFriendRequestResult] = useState(null);
+    // const [processingRequest, setProcessingRequest] = useState(false);
+    // const [showQrCode, setShowQrCode] = useState(false);
+    // const [showQrScanner, setShowQrScanner] = useState(false);
+    // const [scannerInitialized, setScannerInitialized] = useState(false);
+    // const [username, setUsername] = useState("");
+    // const [savingUsername, setSavingUsername] = useState(false);
+    // const [usernameSuccess, setUsernameSuccess] = useState(false);
+    // const [usernameError, setUsernameError] = useState(null);
+    // const [ipfsStatus, setIpfsStatus] = useState(getIpfsStatus());
+    // const [showIpfsDetails, setShowIpfsDetails] = useState(false);
+    // const [blockchainStatus, setBlockchainStatus] = useState(null);
+    // const [showBlockchainDetails, setShowBlockchainDetails] = useState(false);
+    // const [checkingBlockchain, setCheckingBlockchain] = useState(false);
+    // // Friend requests state
+    // const [pendingRequests, setPendingRequests] = useState([]);
+    // const [loadingRequests, setLoadingRequests] = useState(false);
+    // const [sentRequests, setSentRequests] = useState([]);
+    // const [showFriendRequests, setShowFriendRequests] = useState(false);
+    // const [processingAction, setProcessingAction] = useState({});
+    // const [sendingFunds, setSendingFunds] = useState(false);
+    // const [sendFundsAmount, setSendFundsAmount] = useState("");
+    // const [sendFundsError, setSendFundsError] = useState(null);
+    // const [sendFundsSuccess, setSendFundsSuccess] = useState(null);
+    // const [selectedFriend, setSelectedFriend] = useState(null);
+    // const scannerRef = useRef(null);
 
-  // Check if user is authenticated on component mount
-  useEffect(() => {
-    const checkAuth = () => {
-      try {
-        if (!Auth.isLoggedIn()) {
-          // User is not authenticated, redirect to login
-          router.push("/login");
-          return;
+    // Check if user is authenticated on component mount
+    useEffect(() => {
+        const checkAuth = () => {
+            try {
+                if (!Auth.isLoggedIn()) {
+                    // User is not authenticated, redirect to login
+                    router.push("/login");
+                    return;
+                }
+
+                const profileData = Auth.getIdentityData();
+                // Load user profile data
+                if (profileData) {
+                    setProfileData(profileData);
+                }
+
+                // Ensure messaging keys exist
+                // ensureMessagingKeys();
+            } catch (err) {
+                console.error("Error checking authentication:", err);
+                router.push("/login");
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        checkAuth();
+    }, [router]);
+
+    useEffect(() => {
+        async function loadProfileData() {
+            try {
+                const profile = await Profiles.getProfile(profileData.did);
+
+                console.log("IPFS Profile Data:", profile);
+                setIpfsProfile(profile);
+            } catch (error) {
+                console.error("Error loading profile data:", error);
+            }
         }
 
-        const profileData = Auth.getIdentityData();
-        // Load user profile data
         if (profileData) {
-          setProfileData(profileData);
-
-          // After loading local profile, check for IPFS profile
-          if (profileData.did) {
-            // loadIpfsProfile(profileData.did);
-          }
+            // Load IPFS profile if available
+            if (profileData.did) {
+                loadProfileData();
+            }
         }
+    }, [profileData]);
 
-        // Ensure messaging keys exist
-        // ensureMessagingKeys();
-      } catch (err) {
-        console.error("Error checking authentication:", err);
-        router.push("/login");
-      } finally {
-        setLoading(false);
-      }
-    };
+    // // Toggle QR code visibility
+    // const toggleQrCode = () => {
+    //   setShowQrCode((prev) => !prev);
+    // };
 
-    checkAuth();
-  }, [router]);
+    // // Toggle QR scanner
+    // const toggleQrScanner = () => {
+    //   if (showQrScanner) {
+    //     stopQrScanner();
+    //   } else {
+    //     setShowQrScanner(true);
+    //   }
+    // };
 
-  // // Toggle QR code visibility
-  // const toggleQrCode = () => {
-  //   setShowQrCode((prev) => !prev);
-  // };
+    // // Stop QR scanner
+    // const stopQrScanner = async () => {
+    //   try {
+    //     if (scannerRef.current && scannerRef.current.isScanning) {
+    //       await scannerRef.current.stop();
+    //     }
+    //   } catch (error) {
+    //     console.error("Error stopping QR scanner:", error);
+    //   }
+    //   setShowQrScanner(false);
+    // };
 
-  // // Toggle QR scanner
-  // const toggleQrScanner = () => {
-  //   if (showQrScanner) {
-  //     stopQrScanner();
-  //   } else {
-  //     setShowQrScanner(true);
-  //   }
-  // };
+    // // Handle search for user by DID
+    // const handleSearch = async () => {
+    //   if (!searchQuery || !searchQuery.trim()) return;
 
-  // // Stop QR scanner
-  // const stopQrScanner = async () => {
-  //   try {
-  //     if (scannerRef.current && scannerRef.current.isScanning) {
-  //       await scannerRef.current.stop();
-  //     }
-  //   } catch (error) {
-  //     console.error("Error stopping QR scanner:", error);
-  //   }
-  //   setShowQrScanner(false);
-  // };
+    //   try {
+    //     setSearching(true);
+    //     setSearchResult(null);
 
-  // // Handle search for user by DID
-  // const handleSearch = async () => {
-  //   if (!searchQuery || !searchQuery.trim()) return;
+    //     // Format the query as a DID if it's not already
+    //     const formattedQuery = searchQuery.startsWith("did:ethr:")
+    //       ? searchQuery
+    //       : `did:ethr:${searchQuery}`;
 
-  //   try {
-  //     setSearching(true);
-  //     setSearchResult(null);
+    //     // Search for user by DID
+    //     const result = await searchUserByDid(formattedQuery);
+    //     setSearchResult(result);
 
-  //     // Format the query as a DID if it's not already
-  //     const formattedQuery = searchQuery.startsWith("did:ethr:")
-  //       ? searchQuery
-  //       : `did:ethr:${searchQuery}`;
+    //     if (!result) {
+    //       console.log("User not found with DID:", formattedQuery);
+    //     }
+    //   } catch (error) {
+    //     console.error("Error searching for user:", error);
+    //     setSearchResult({ error: "Error searching for user" });
+    //   } finally {
+    //     setSearching(false);
+    //   }
+    // };
 
-  //     // Search for user by DID
-  //     const result = await searchUserByDid(formattedQuery);
-  //     setSearchResult(result);
+    // // Initialize QR scanner when shown
+    // useEffect(() => {
+    //   if (showQrScanner && !scannerInitialized) {
+    //     const initScanner = async () => {
+    //       try {
+    //         if (scannerRef.current) {
+    //           const html5QrCode = new Html5Qrcode("qr-reader");
 
-  //     if (!result) {
-  //       console.log("User not found with DID:", formattedQuery);
-  //     }
-  //   } catch (error) {
-  //     console.error("Error searching for user:", error);
-  //     setSearchResult({ error: "Error searching for user" });
-  //   } finally {
-  //     setSearching(false);
-  //   }
-  // };
+    //           await html5QrCode.start(
+    //             { facingMode: "environment" },
+    //             {
+    //               fps: 10,
+    //               qrbox: 250,
+    //             },
+    //             (decodedText) => {
+    //               // Handle successful scan
+    //               console.log("QR Code detected:", decodedText);
+    //               // Parse the URL to get the DID
+    //               try {
+    //                 const url = new URL(decodedText);
+    //                 const friendToAdd = url.searchParams.get("addFriend");
+    //                 if (friendToAdd) {
+    //                   setSearchQuery(friendToAdd);
+    //                   setTimeout(() => {
+    //                     handleSearch();
+    //                   }, 500);
+    //                   stopQrScanner();
+    //                 }
+    //               } catch (error) {
+    //                 console.error("Error parsing QR code URL:", error);
+    //               }
+    //             },
+    //             (errorMessage) => {
+    //               // Ignore errors while scanning is in progress
+    //               console.debug("QR Code scanning in progress...");
+    //             }
+    //           );
 
-  // // Initialize QR scanner when shown
-  // useEffect(() => {
-  //   if (showQrScanner && !scannerInitialized) {
-  //     const initScanner = async () => {
-  //       try {
-  //         if (scannerRef.current) {
-  //           const html5QrCode = new Html5Qrcode("qr-reader");
+    //           scannerRef.current = html5QrCode;
+    //           setScannerInitialized(true);
+    //         }
+    //       } catch (error) {
+    //         console.error("Error initializing QR scanner:", error);
+    //       }
+    //     };
 
-  //           await html5QrCode.start(
-  //             { facingMode: "environment" },
-  //             {
-  //               fps: 10,
-  //               qrbox: 250,
-  //             },
-  //             (decodedText) => {
-  //               // Handle successful scan
-  //               console.log("QR Code detected:", decodedText);
-  //               // Parse the URL to get the DID
-  //               try {
-  //                 const url = new URL(decodedText);
-  //                 const friendToAdd = url.searchParams.get("addFriend");
-  //                 if (friendToAdd) {
-  //                   setSearchQuery(friendToAdd);
-  //                   setTimeout(() => {
-  //                     handleSearch();
-  //                   }, 500);
-  //                   stopQrScanner();
-  //                 }
-  //               } catch (error) {
-  //                 console.error("Error parsing QR code URL:", error);
-  //               }
-  //             },
-  //             (errorMessage) => {
-  //               // Ignore errors while scanning is in progress
-  //               console.debug("QR Code scanning in progress...");
-  //             }
-  //           );
+    //     initScanner();
+    //   }
 
-  //           scannerRef.current = html5QrCode;
-  //           setScannerInitialized(true);
-  //         }
-  //       } catch (error) {
-  //         console.error("Error initializing QR scanner:", error);
-  //       }
-  //     };
+    //   // Cleanup scanner on unmount
+    //   return () => {
+    //     if (scannerRef.current && scannerRef.current.isScanning) {
+    //       scannerRef.current.stop().catch(console.error);
+    //     }
+    //   };
+    // }, [showQrScanner, scannerInitialized, handleSearch]);
 
-  //     initScanner();
-  //   }
+    // // Load user profile from IPFS
+    // const loadIpfsProfile = async (did) => {
+    //   try {
+    //     const ipfsProfileData = await getUserProfileFromIPFS(did);
 
-  //   // Cleanup scanner on unmount
-  //   return () => {
-  //     if (scannerRef.current && scannerRef.current.isScanning) {
-  //       scannerRef.current.stop().catch(console.error);
-  //     }
-  //   };
-  // }, [showQrScanner, scannerInitialized, handleSearch]);
+    //     if (ipfsProfileData) {
+    //       setIpfsProfile(ipfsProfileData);
+    //       // If we have a username in the IPFS profile, set the input field
+    //       if (ipfsProfileData.username) {
+    //         setUsername(ipfsProfileData.username);
+    //       }
+    //       console.log("Loaded IPFS profile:", ipfsProfileData);
+    //     } else {
+    //       console.log("No IPFS profile found for DID:", did);
+    //     }
+    //   } catch (error) {
+    //     console.error("Error loading IPFS profile:", error);
+    //   }
+    // };
 
-  // // Load user profile from IPFS
-  // const loadIpfsProfile = async (did) => {
-  //   try {
-  //     const ipfsProfileData = await getUserProfileFromIPFS(did);
+    // // Check for pending friend requests
+    // const checkForFriendRequests = async () => {
+    //   if (!profileData || !profileData.did) return;
 
-  //     if (ipfsProfileData) {
-  //       setIpfsProfile(ipfsProfileData);
-  //       // If we have a username in the IPFS profile, set the input field
-  //       if (ipfsProfileData.username) {
-  //         setUsername(ipfsProfileData.username);
-  //       }
-  //       console.log("Loaded IPFS profile:", ipfsProfileData);
-  //     } else {
-  //       console.log("No IPFS profile found for DID:", did);
-  //     }
-  //   } catch (error) {
-  //     console.error("Error loading IPFS profile:", error);
-  //   }
-  // };
+    //   try {
+    //     setLoadingRequests(true);
 
-  // // Check for pending friend requests
-  // const checkForFriendRequests = async () => {
-  //   if (!profileData || !profileData.did) return;
+    //     // Get all friend requests (both sent and received)
+    //     const result = await getAllFriendRequests();
 
-  //   try {
-  //     setLoadingRequests(true);
+    //     if (result.success) {
+    //       setPendingRequests(
+    //         result.received.filter((req) => req.status === "pending")
+    //       );
+    //       setSentRequests(result.sent);
+    //     } else {
+    //       console.error("Failed to fetch friend requests:", result.error);
+    //     }
+    //   } catch (error) {
+    //     console.error("Error checking for friend requests:", error);
+    //   } finally {
+    //     setLoadingRequests(false);
+    //   }
+    // };
 
-  //     // Get all friend requests (both sent and received)
-  //     const result = await getAllFriendRequests();
+    // // Check for friend requests when profile data changes
+    // useEffect(() => {
+    //   if (profileData && profileData.did) {
+    //     checkForFriendRequests();
+    //   }
+    // }, [profileData]);
 
-  //     if (result.success) {
-  //       setPendingRequests(
-  //         result.received.filter((req) => req.status === "pending")
-  //       );
-  //       setSentRequests(result.sent);
-  //     } else {
-  //       console.error("Failed to fetch friend requests:", result.error);
-  //     }
-  //   } catch (error) {
-  //     console.error("Error checking for friend requests:", error);
-  //   } finally {
-  //     setLoadingRequests(false);
-  //   }
-  // };
+    // // Ensure messaging keys exist for the user
+    // const ensureMessagingKeys = async () => {
+    //   try {
+    //     // Check if keys already exist
+    //     const existingKeys = retrieveMessagingKeys();
+    //     if (existingKeys) {
+    //       console.log("Messaging keys already exist");
+    //       return;
+    //     }
 
-  // // Check for friend requests when profile data changes
-  // useEffect(() => {
-  //   if (profileData && profileData.did) {
-  //     checkForFriendRequests();
-  //   }
-  // }, [profileData]);
+    //     // Generate new keys if they don't exist
+    //     const keys = await generateAsymmetricKeys();
+    //     storeMessagingKeys(keys.privateKey, keys.publicKey, keys.address);
 
-  // // Ensure messaging keys exist for the user
-  // const ensureMessagingKeys = async () => {
-  //   try {
-  //     // Check if keys already exist
-  //     const existingKeys = retrieveMessagingKeys();
-  //     if (existingKeys) {
-  //       console.log("Messaging keys already exist");
-  //       return;
-  //     }
+    //     // Update profile data with messaging key address
+    //     const updatedProfileData = JSON.parse(
+    //       localStorage.getItem("liberaChainIdentity") || "{}"
+    //     );
+    //     setProfileData(updatedProfileData);
 
-  //     // Generate new keys if they don't exist
-  //     const keys = await generateAsymmetricKeys();
-  //     storeMessagingKeys(keys.privateKey, keys.publicKey, keys.address);
+    //     console.log("Generated and stored new messaging keys");
+    //   } catch (error) {
+    //     console.error("Error ensuring messaging keys:", error);
+    //   }
+    // };
 
-  //     // Update profile data with messaging key address
-  //     const updatedProfileData = JSON.parse(
-  //       localStorage.getItem("liberaChainIdentity") || "{}"
-  //     );
-  //     setProfileData(updatedProfileData);
+    // // Use URL params if they exist (for QR code navigation)
+    // useEffect(() => {
+    //   if (typeof window !== "undefined") {
+    //     const params = new URLSearchParams(window.location.search);
+    //     const friendToAdd = params.get("addFriend");
 
-  //     console.log("Generated and stored new messaging keys");
-  //   } catch (error) {
-  //     console.error("Error ensuring messaging keys:", error);
-  //   }
-  // };
+    //     if (friendToAdd) {
+    //       // Clear the URL parameter to avoid repeated searches on refresh
+    //       const newUrl = window.location.pathname;
+    //       window.history.replaceState({}, document.title, newUrl);
 
-  // // Use URL params if they exist (for QR code navigation)
-  // useEffect(() => {
-  //   if (typeof window !== "undefined") {
-  //     const params = new URLSearchParams(window.location.search);
-  //     const friendToAdd = params.get("addFriend");
+    //       // Set the search query and trigger search
+    //       setSearchQuery(friendToAdd);
+    //       setTimeout(() => {
+    //         handleSearch();
+    //       }, 500);
+    //     }
+    //   }
+    // }, [handleSearch]);
 
-  //     if (friendToAdd) {
-  //       // Clear the URL parameter to avoid repeated searches on refresh
-  //       const newUrl = window.location.pathname;
-  //       window.history.replaceState({}, document.title, newUrl);
+    // // Handle friend request
+    // const handleFriendRequest = async () => {
+    //   if (!searchResult || !searchResult.found) return;
 
-  //       // Set the search query and trigger search
-  //       setSearchQuery(friendToAdd);
-  //       setTimeout(() => {
-  //         handleSearch();
-  //       }, 500);
-  //     }
-  //   }
-  // }, [handleSearch]);
+    //   try {
+    //     setProcessingRequest(true);
 
-  // // Handle friend request
-  // const handleFriendRequest = async () => {
-  //   if (!searchResult || !searchResult.found) return;
+    //     // Create friend request with encrypted symmetric key
+    //     const result = await createFriendRequest(
+    //       searchResult.did,
+    //       searchResult.publicKey
+    //     );
 
-  //   try {
-  //     setProcessingRequest(true);
+    //     // Log the result to console for copying
+    //     console.log(
+    //       "Friend request data (copy this):",
+    //       JSON.stringify(result, null, 2)
+    //     );
 
-  //     // Create friend request with encrypted symmetric key
-  //     const result = await createFriendRequest(
-  //       searchResult.did,
-  //       searchResult.publicKey
-  //     );
+    //     // Set the result for display
+    //     setFriendRequestResult(result);
+    //   } catch (error) {
+    //     console.error("Error creating friend request:", error);
+    //     setFriendRequestResult({ error: error.message });
+    //   } finally {
+    //     setProcessingRequest(false);
+    //   }
+    // };
 
-  //     // Log the result to console for copying
-  //     console.log(
-  //       "Friend request data (copy this):",
-  //       JSON.stringify(result, null, 2)
-  //     );
+    // // Check blockchain status
+    // useEffect(() => {
+    //   const checkBlockchainStatus = async () => {
+    //     try {
+    //       setCheckingBlockchain(true);
+    //       const status = await getBlockchainStatus();
+    //       setBlockchainStatus(status);
+    //     } catch (error) {
+    //       console.error("Error checking blockchain status:", error);
+    //     } finally {
+    //       setCheckingBlockchain(false);
+    //     }
+    //   };
 
-  //     // Set the result for display
-  //     setFriendRequestResult(result);
-  //   } catch (error) {
-  //     console.error("Error creating friend request:", error);
-  //     setFriendRequestResult({ error: error.message });
-  //   } finally {
-  //     setProcessingRequest(false);
-  //   }
-  // };
+    //   checkBlockchainStatus();
+    // }, []);
 
-  // // Check blockchain status
-  // useEffect(() => {
-  //   const checkBlockchainStatus = async () => {
-  //     try {
-  //       setCheckingBlockchain(true);
-  //       const status = await getBlockchainStatus();
-  //       setBlockchainStatus(status);
-  //     } catch (error) {
-  //       console.error("Error checking blockchain status:", error);
-  //     } finally {
-  //       setCheckingBlockchain(false);
-  //     }
-  //   };
+    if (auth.loading) {
+        return <ContentWrapper title="Dashboard"></ContentWrapper>;
+    } else if (!auth.isAuthenticated) {
+        return null;
+    }
 
-  //   checkBlockchainStatus();
-  // }, []);
+    // Show loading state
+    if (loading) {
+        return (
+            <div className="animate-gradient min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+                <div className="text-center">
+                    <CircleNotchIcon className="animate-spin h-10 w-10 mx-auto text-emerald-500" />
+                    <p className="mt-3 text-base text-gray-300">
+                        Loading your profile...
+                    </p>
+                </div>
+            </div>
+        );
+    }
 
-  if (auth.loading) {
-    return <ContentWrapper title="Dashboard"></ContentWrapper>;
-  } else if (!auth.isAuthenticated) {
-    return null;
-  }
+    console.log("Profile data loaded:", profileData);
 
-  // Show loading state
-  if (loading) {
     return (
-      <div className="animate-gradient min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-        <div className="text-center">
-          <CircleNotchIcon className="animate-spin h-10 w-10 mx-auto text-emerald-500" />
-          <p className="mt-3 text-base text-gray-300">
-            Loading your profile...
-          </p>
-        </div>
-      </div>
-    );
-  }
+        <>
+            <ContentWrapper title="Dashboard">
+                <UserProfile
+                    profileData={profileData}
+                    ipfsProfile={ipfsProfile}
+                    onIpsfProfileChange={async (newProfile) => {
+                        await Profiles.saveProfile(profileData.did, newProfile);
+                        setIpfsProfile(newProfile);
+                    }}
+                />
 
-  console.log("Profile data loaded:", profileData);
+                <QuickActions
+                    pendingRequests={null /*pendingRequests*/}
+                    showFriendRequests={null /*showFriendRequests*/}
+                    setShowFriendRequests={null /*setShowFriendRequests*/}
+                    checkForFriendRequests={null /*checkForFriendRequests*/}
+                />
 
-  return (
-    <>
-      <ContentWrapper title="Dashboard">
-        <UserProfile
-          profileData={profileData}
-          ipfsProfile={null /*ipfsProfile*/}
-        />
-
-        <QuickActions
-          pendingRequests={null /*pendingRequests*/}
-          showFriendRequests={null /*showFriendRequests*/}
-          setShowFriendRequests={null /*setShowFriendRequests*/}
-          checkForFriendRequests={null /*checkForFriendRequests*/}
-        />
-
-        {/* <EditProfile
+                {/* <EditProfile
           username={username}
           setUsername={setUsername}
           ipfsProfile={ipfsProfile}
@@ -395,9 +416,9 @@ export default function DashboardPage() {
           usernameError={usernameError}
         /> */}
 
-        <NetworkStatus />
-      </ContentWrapper>
-      {/* 
+                <NetworkStatus />
+            </ContentWrapper>
+            {/* 
       {selectedFriend && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
           <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full">
@@ -461,6 +482,6 @@ export default function DashboardPage() {
           </div>
         </div>
       )} */}
-    </>
-  );
+        </>
+    );
 }

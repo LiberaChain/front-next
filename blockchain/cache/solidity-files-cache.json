@@ -1,172 +1,6 @@
 {
   "_format": "hh-sol-cache-2",
   "files": {
-    "/home/ziga/projects/libera-front/blockchain/contracts/ContentManagement.sol": {
-      "lastModificationDate": 1748878066574,
-      "contentHash": "8136978f2cbdc974832e29f50e130fe4",
-      "sourceName": "blockchain/contracts/ContentManagement.sol",
-      "solcConfig": {
-        "version": "0.8.24",
-        "settings": {
-          "optimizer": {
-            "enabled": true,
-            "runs": 200
-          },
-          "viaIR": false,
-          "evmVersion": "paris",
-          "metadata": {
-            "bytecodeHash": "none"
-          },
-          "outputSelection": {
-            "*": {
-              "*": [
-                "abi",
-                "evm.bytecode",
-                "evm.deployedBytecode",
-                "evm.methodIdentifiers",
-                "metadata"
-              ],
-              "": [
-                "ast"
-              ]
-            }
-          }
-        }
-      },
-      "imports": [
-        "./DIDRegistry.sol"
-      ],
-      "versionPragmas": [
-        "^0.8.24"
-      ],
-      "artifacts": [
-        "ContentManagement"
-      ]
-    },
-    "/home/ziga/projects/libera-front/blockchain/contracts/DIDRegistry.sol": {
-      "lastModificationDate": 1748878044513,
-      "contentHash": "fee5e2a89346b4ab9a6748dc3c2b08a6",
-      "sourceName": "blockchain/contracts/DIDRegistry.sol",
-      "solcConfig": {
-        "version": "0.8.24",
-        "settings": {
-          "optimizer": {
-            "enabled": true,
-            "runs": 200
-          },
-          "viaIR": false,
-          "evmVersion": "paris",
-          "metadata": {
-            "bytecodeHash": "none"
-          },
-          "outputSelection": {
-            "*": {
-              "*": [
-                "abi",
-                "evm.bytecode",
-                "evm.deployedBytecode",
-                "evm.methodIdentifiers",
-                "metadata"
-              ],
-              "": [
-                "ast"
-              ]
-            }
-          }
-        }
-      },
-      "imports": [],
-      "versionPragmas": [
-        "^0.8.24"
-      ],
-      "artifacts": [
-        "DIDRegistry"
-      ]
-    },
-    "/home/ziga/projects/libera-front/blockchain/contracts/ObjectLifeCycle.sol": {
-      "lastModificationDate": 1748878086034,
-      "contentHash": "7d8a60c701d24bbfbad0032ad64cb18d",
-      "sourceName": "blockchain/contracts/ObjectLifeCycle.sol",
-      "solcConfig": {
-        "version": "0.8.24",
-        "settings": {
-          "optimizer": {
-            "enabled": true,
-            "runs": 200
-          },
-          "viaIR": false,
-          "evmVersion": "paris",
-          "metadata": {
-            "bytecodeHash": "none"
-          },
-          "outputSelection": {
-            "*": {
-              "*": [
-                "abi",
-                "evm.bytecode",
-                "evm.deployedBytecode",
-                "evm.methodIdentifiers",
-                "metadata"
-              ],
-              "": [
-                "ast"
-              ]
-            }
-          }
-        }
-      },
-      "imports": [
-        "./DIDRegistry.sol",
-        "./IFeeAndTreasury.sol",
-        "@openzeppelin/contracts/token/ERC721/ERC721.sol"
-      ],
-      "versionPragmas": [
-        "^0.8.24"
-      ],
-      "artifacts": [
-        "ObjectLifecycle"
-      ]
-    },
-    "/home/ziga/projects/libera-front/blockchain/contracts/IFeeAndTreasury.sol": {
-      "lastModificationDate": 1748878099714,
-      "contentHash": "fb331757b6c015df3ca12720f3b325cb",
-      "sourceName": "blockchain/contracts/IFeeAndTreasury.sol",
-      "solcConfig": {
-        "version": "0.8.24",
-        "settings": {
-          "optimizer": {
-            "enabled": true,
-            "runs": 200
-          },
-          "viaIR": false,
-          "evmVersion": "paris",
-          "metadata": {
-            "bytecodeHash": "none"
-          },
-          "outputSelection": {
-            "*": {
-              "*": [
-                "abi",
-                "evm.bytecode",
-                "evm.deployedBytecode",
-                "evm.methodIdentifiers",
-                "metadata"
-              ],
-              "": [
-                "ast"
-              ]
-            }
-          }
-        }
-      },
-      "imports": [],
-      "versionPragmas": [
-        "^0.8.24"
-      ],
-      "artifacts": [
-        "IFeeAndTreasury"
-      ]
-    },
     "/home/ziga/projects/libera-front/node_modules/@openzeppelin/contracts/token/ERC721/ERC721.sol": {
       "lastModificationDate": 1748869411083,
       "contentHash": "a7951c81f7037d558c6d2f220b0cb38e",
@@ -797,10 +631,10 @@
         "Ownable"
       ]
     },
-    "/home/ziga/projects/libera-front/blockchain/contracts/FeeAndTreasury.sol": {
-      "lastModificationDate": 1748878115156,
-      "contentHash": "3f30eff9a6dadb027f7fc9b283865dca",
-      "sourceName": "blockchain/contracts/FeeAndTreasury.sol",
+    "/home/ziga/projects/libera-front/blockchain/contracts/BlockchainPosts.sol": {
+      "lastModificationDate": 1748899087570,
+      "contentHash": "28bf144269df6d570a855fed569fc8b9",
+      "sourceName": "blockchain/contracts/BlockchainPosts.sol",
       "solcConfig": {
         "version": "0.8.24",
         "settings": {
@@ -829,15 +663,92 @@
           }
         }
       },
-      "imports": [
-        "@openzeppelin/contracts/access/Ownable.sol",
-        "./IFeeAndTreasury.sol"
-      ],
+      "imports": [],
       "versionPragmas": [
-        "^0.8.24"
+        "^0.8.0"
       ],
       "artifacts": [
-        "FeeAndTreasury"
+        "BlockchainPosts"
+      ]
+    },
+    "/home/ziga/projects/libera-front/blockchain/contracts/UserPublicKeys.sol": {
+      "lastModificationDate": 1748899087592,
+      "contentHash": "a3ab6914689ed40cc6017a1610859465",
+      "sourceName": "blockchain/contracts/UserPublicKeys.sol",
+      "solcConfig": {
+        "version": "0.8.24",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "viaIR": false,
+          "evmVersion": "paris",
+          "metadata": {
+            "bytecodeHash": "none"
+          },
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.0"
+      ],
+      "artifacts": [
+        "UserPublicKeys"
+      ]
+    },
+    "/home/ziga/projects/libera-front/blockchain/contracts/UserRegistry.sol": {
+      "lastModificationDate": 1748899087624,
+      "contentHash": "3d183e4326f47f528ba7b68b9e1d99ac",
+      "sourceName": "blockchain/contracts/UserRegistry.sol",
+      "solcConfig": {
+        "version": "0.8.24",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "viaIR": false,
+          "evmVersion": "paris",
+          "metadata": {
+            "bytecodeHash": "none"
+          },
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.0"
+      ],
+      "artifacts": [
+        "UserRegistry"
       ]
     }
   }

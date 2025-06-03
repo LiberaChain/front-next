@@ -1,34 +1,97 @@
 "use client";
 
 import { InfoIcon, ShieldCheckIcon, WarningIcon } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useState, useRef } from "react";
+import BlockchainService from "@core/blockchain/BlockchainService";
+import { createObject } from "@core/libera/objects";
 
 export default function ObjectGenerator() {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState("");
-  const [locationDid, setLocationDid] = useState("");
+  const [objectId, setObjectId] = useState("");
   const [privateKey, setPrivateKey] = useState("");
   const [publicKey, setPublicKey] = useState("");
   const [ipfsCid, setIpfsCid] = useState("");
   const [showDetails, setShowDetails] = useState(false);
-  const [userLocations, setUserLocations] = useState([]);
 
   // Form data
-  const [locationType, setLocationType] = useState("location");
-  const [locationName, setLocationName] = useState("");
+  const [objectType, setObjectType] = useState("object");
+  const [objectName, setObjectName] = useState("");
+  const [description, setDescription] = useState("");
   const [coordinates, setCoordinates] = useState("");
-  const [orgDid, setOrgDid] = useState("");
   const [reward, setReward] = useState("");
 
-  const handleGenerateObject = async (e) => {};
+  const qrCodeRef = useRef(null);
+
+  const handleGenerateObject = async (e) => {
+    e.preventDefault();
+    
+    if (!objectName.trim()) {
+      setError("Object name is required");
+      return;
+    }
+
+    try {
+      setGenerating(true);
+      setError("");
+      setSuccess("");
+      setQrCodeDataUrl("");
+      setObjectId("");
+      setPrivateKey("");
+      setPublicKey("");
+      setIpfsCid("");
+
+      console.log("1. Starting object creation process...");
+      
+      const liberaService = await BlockchainService.libera();
+      console.log("2. Connected to Libera blockchain service");
+
+      // Prepare object metadata
+      const objectData = {
+        name: objectName.trim(),
+        description: description.trim(),
+        type: objectType,
+        ...(coordinates && { coordinates }),
+        ...(reward && { reward }),
+        timestamp: new Date().toISOString()
+      };
+      console.log("3. Prepared object metadata:", objectData);
+
+      // Create the object on-chain with IPFS metadata
+      const { tx, objectIdentity } = await createObject(liberaService, objectData, "0.01");
+      console.log("4. Object creation transaction sent:", tx.hash);
+
+      // Wait for transaction confirmation
+      console.log("5. Waiting for transaction confirmation...");
+      const receipt = await tx.wait();
+      console.log("6. Transaction confirmed in block:", receipt.blockNumber);
+
+      // Get object ID from event
+      const event = receipt.events?.find(e => e.event === 'ObjectCreated');
+      const newObjectId = event?.args?.tokenId;
+      console.log("7. New object created with ID:", newObjectId.toString());
+
+      setObjectId(newObjectId.toString());
+      setPrivateKey(objectIdentity.privateKey);
+      setPublicKey(objectIdentity.publicKey);
+
+      // Show success message
+      setSuccess(`Successfully created object: ${objectName}`);
+      console.log("8. Object creation process completed successfully");
+
+    } catch (error) {
+      console.error("Failed to create object:", error);
+      setError(error.message || "Failed to create object");
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   return (
     <div className="bg-gray-800 rounded-lg shadow p-6 border border-gray-700">
-      <h2 className="text-lg font-medium text-white mb-4">
-        Generate Location/Object
-      </h2>
+      <h2 className="text-lg font-medium text-white mb-4">Create New Object</h2>
 
       {error && (
         <div className="mb-4 rounded-md bg-red-900/40 p-4">
@@ -48,21 +111,18 @@ export default function ObjectGenerator() {
 
       <form onSubmit={handleGenerateObject} className="space-y-4">
         <div>
-          <label
-            htmlFor="location-type"
-            className="block text-sm font-medium text-gray-300"
-          >
+          <label htmlFor="object-type" className="block text-sm font-medium text-gray-300">
             Type
           </label>
           <div className="mt-1">
             <select
-              id="location-type"
-              value={locationType}
-              onChange={(e) => setLocationType(e.target.value)}
+              id="object-type"
+              value={objectType}
+              onChange={(e) => setObjectType(e.target.value)}
               className="bg-gray-700 text-white block w-full rounded-md border border-gray-600 px-3 py-2 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-emerald-500 sm:text-sm"
             >
-              <option value="location">Location</option>
               <option value="object">Object</option>
+              <option value="location">Location</option>
               <option value="event">Event</option>
               <option value="product">Product</option>
             </select>
@@ -70,27 +130,16 @@ export default function ObjectGenerator() {
         </div>
 
         <div>
-          <label
-            htmlFor="location-name"
-            className="block text-sm font-medium text-gray-300"
-          >
+          <label htmlFor="object-name" className="block text-sm font-medium text-gray-300">
             Name
           </label>
           <div className="mt-1">
             <input
-              id="location-name"
+              id="object-name"
               type="text"
-              value={locationName}
-              onChange={(e) => setLocationName(e.target.value)}
-              placeholder={`${
-                locationType === "location"
-                  ? "Eiffel Tower"
-                  : locationType === "object"
-                  ? "Vintage Guitar"
-                  : locationType === "event"
-                  ? "Tech Conference"
-                  : "Organic Coffee"
-              }`}
+              value={objectName}
+              onChange={(e) => setObjectName(e.target.value)}
+              placeholder={objectType === "location" ? "Eiffel Tower" : objectType === "object" ? "Vintage Guitar" : objectType === "event" ? "Tech Conference" : "Organic Coffee"}
               className="bg-gray-700 text-white block w-full rounded-md border border-gray-600 px-3 py-2 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-emerald-500 sm:text-sm"
               required
             />
@@ -98,10 +147,23 @@ export default function ObjectGenerator() {
         </div>
 
         <div>
-          <label
-            htmlFor="coordinates"
-            className="block text-sm font-medium text-gray-300"
-          >
+          <label htmlFor="description" className="block text-sm font-medium text-gray-300">
+            Description
+          </label>
+          <div className="mt-1">
+            <textarea
+              id="description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Describe your object..."
+              rows={3}
+              className="bg-gray-700 text-white block w-full rounded-md border border-gray-600 px-3 py-2 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-emerald-500 sm:text-sm"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor="coordinates" className="block text-sm font-medium text-gray-300">
             Coordinates (optional)
           </label>
           <div className="mt-1">
@@ -120,32 +182,7 @@ export default function ObjectGenerator() {
         </div>
 
         <div>
-          <label
-            htmlFor="org-did"
-            className="block text-sm font-medium text-gray-300"
-          >
-            Organization DID (optional)
-          </label>
-          <div className="mt-1">
-            <input
-              id="org-did"
-              type="text"
-              value={orgDid}
-              onChange={(e) => setOrgDid(e.target.value)}
-              placeholder="did:ethr:0x..."
-              className="bg-gray-700 text-white block w-full rounded-md border border-gray-600 px-3 py-2 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-emerald-500 sm:text-sm"
-            />
-          </div>
-          <p className="mt-1 text-xs text-gray-400">
-            Leave blank to use your own DID
-          </p>
-        </div>
-
-        <div>
-          <label
-            htmlFor="reward"
-            className="block text-sm font-medium text-gray-300"
-          >
+          <label htmlFor="reward" className="block text-sm font-medium text-gray-300">
             Reward (optional)
           </label>
           <div className="mt-1">
@@ -168,182 +205,99 @@ export default function ObjectGenerator() {
           >
             {generating ? (
               <>
-                <svg
-                  className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
+                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                Generating...
+                Creating Object...
               </>
             ) : (
-              "Generate QR Code"
+              "Create Object"
             )}
           </button>
         </div>
       </form>
 
-      {qrCodeDataUrl && (
+      {objectId && (
         <div className="mt-6 bg-gray-700 rounded-lg p-6 border border-gray-600">
-          <h3 className="text-md font-medium text-white mb-4">Your QR Code</h3>
+          <h3 className="text-md font-medium text-white mb-4">Object Created Successfully</h3>
 
-          <div className="flex flex-col items-center">
-            <div className="bg-white p-2 rounded-lg" ref={qrCodeRef}>
-              <img src={qrCodeDataUrl} alt="QR Code" className="w-64 h-64" />
+          <div className="mt-3 text-sm text-gray-300">
+            <p>Type: <span className="text-emerald-400">{objectType}</span></p>
+            <p>Name: <span className="text-emerald-400">{objectName}</span></p>
+            <p>Object ID: <span className="text-emerald-400">{objectId}</span></p>
+            {coordinates && <p>Coordinates: <span className="text-emerald-400">{coordinates}</span></p>}
+            {reward && <p>Reward: <span className="text-emerald-400">{reward}</span></p>}
+          </div>
+
+          <button
+            onClick={() => setShowDetails(!showDetails)}
+            className="mt-4 text-sm text-gray-400 hover:text-gray-300"
+          >
+            {showDetails ? "Hide Technical Details" : "Show Technical Details"}
+          </button>
+
+          {showDetails && (
+            <div className="mt-4 bg-gray-800 rounded-lg p-4 border border-gray-600 text-xs text-gray-400 w-full">
+              <p className="mb-2">Object ID:</p>
+              <div className="bg-gray-900 p-2 rounded mb-2 break-all">
+                {objectId}
+              </div>
+
+              <p className="mb-2">Private Key:</p>
+              <div className="bg-gray-900 p-2 rounded mb-2 break-all">
+                {privateKey}
+              </div>
+
+              <p className="mb-2">Public Key:</p>
+              <div className="bg-gray-900 p-2 rounded mb-2 break-all">
+                {publicKey}
+              </div>
+
+              <p className="mb-2">IPFS CID:</p>
+              <div className="bg-gray-900 p-2 rounded mb-2 break-all">
+                {ipfsCid}
+              </div>
             </div>
+          )}
 
-            <div className="mt-3 text-sm text-gray-300 text-center">
-              <p>
-                Type: <span className="text-emerald-400">{locationType}</span>
-              </p>
-              <p>
-                Name: <span className="text-emerald-400">{locationName}</span>
-              </p>
-              {coordinates && (
-                <p>
-                  Coordinates:{" "}
-                  <span className="text-emerald-400">{coordinates}</span>
-                </p>
-              )}
-              {reward && (
-                <p>
-                  Reward: <span className="text-emerald-400">{reward}</span>
-                </p>
-              )}
-            </div>
-
-            <button
-              onClick={handleDownloadQRCode}
-              className="mt-4 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-            >
-              Download QR Code
-            </button>
-
-            <button
-              onClick={toggleDetails}
-              className="mt-2 text-sm text-gray-400 hover:text-gray-300"
-            >
-              {showDetails
-                ? "Hide Technical Details"
-                : "Show Technical Details"}
-            </button>
-
-            {showDetails && (
-              <div className="mt-4 bg-gray-800 rounded-lg p-4 border border-gray-600 text-xs text-gray-400 w-full">
-                <p className="mb-2">Location DID:</p>
-                <div className="bg-gray-900 p-2 rounded mb-2 break-all">
-                  {locationDid}
-                </div>
-
-                <p className="mb-2">Private Key (in QR code):</p>
-                <div className="bg-gray-900 p-2 rounded mb-2 break-all">
-                  {privateKey}
-                </div>
-
-                <p className="mb-2">Public Key (stored on IPFS):</p>
-                <div className="bg-gray-900 p-2 rounded mb-2 break-all">
-                  {publicKey}
-                </div>
-
-                <p className="mb-2">IPFS CID:</p>
-                <div className="bg-gray-900 p-2 rounded mb-2 break-all">
-                  {ipfsCid}
-                </div>
-
-                <p className="mt-4 text-yellow-400">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-4 w-4 inline mr-1"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  Security Note: The private key is embedded in the QR code.
-                  Anyone who scans this QR can prove they were at this location.
+          <div className="space-y-4 text-sm mt-6">
+            <div className="flex items-start">
+              <ShieldCheckIcon className="h-5 w-5 text-emerald-500 mr-2 flex-shrink-0" />
+              <div>
+                <h4 className="text-emerald-400 font-medium">Object Created On-Chain</h4>
+                <p className="text-gray-400 mt-1">
+                  Your object has been created on the blockchain with a unique cryptographic identity.
+                  The object's metadata is stored on IPFS and linked on-chain.
                 </p>
               </div>
-            )}
+            </div>
+
+            <div className="flex items-start">
+              <InfoIcon className="h-5 w-5 text-blue-500 mr-2 flex-shrink-0" />
+              <div>
+                <h4 className="text-blue-400 font-medium">Next Steps</h4>
+                <p className="text-gray-400 mt-1">
+                  1. Save the private key securely - it's needed for future object operations.<br />
+                  2. Users can now interact with your object using its ID.<br />
+                  3. You can update the object's metadata or transfer ownership through the blockchain.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start">
+              <WarningIcon className="h-5 w-5 text-yellow-500 mr-2 flex-shrink-0" />
+              <div>
+                <h4 className="text-yellow-400 font-medium">Security Notice</h4>
+                <p className="text-gray-400 mt-1">
+                  Keep the private key secure and never share it. It proves ownership of this object
+                  and is required for administrative operations.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       )}
-
-      {/* Explanation of cryptographic verification */}
-      <div className="mt-8 bg-gray-900 rounded-lg p-6 border border-gray-700">
-        <h3 className="text-md font-medium text-white mb-2">
-          About Cryptographic QR Codes
-        </h3>
-        <p className="text-sm text-gray-400 mb-4">
-          These QR codes use public-key cryptography to securely verify
-          locations and objects.
-        </p>
-
-        <div className="space-y-4 text-sm">
-          <div className="flex items-start">
-            <ShieldCheckIcon className="h-5 w-5 text-emerald-500 mr-2 flex-shrink-0" />
-            <div>
-              <h4 className="text-emerald-400 font-medium">
-                Secure Verification
-              </h4>
-              <p className="text-gray-400 mt-1">
-                When a QR code is scanned, the embedded private key is used with
-                the public key stored on IPFS to verify that the location is
-                authentic.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-start">
-            <InfoIcon className="h-5 w-5 text-blue-500 mr-2 flex-shrink-0" />
-            <div>
-              <h4 className="text-blue-400 font-medium">How It Works</h4>
-              <p className="text-gray-400 mt-1">
-                1. When you create a QR code, a unique cryptographic key pair is
-                generated.
-                <br />
-                2. The private key is encoded in the QR code.
-                <br />
-                3. The public key and location details are stored on IPFS.
-                <br />
-                4. When someone scans the QR code, their device verifies that
-                the private key corresponds to the public key.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-start">
-            <WarningIcon className="h-5 w-5 text-yellow-500 mr-2 flex-shrink-0" />
-            <div>
-              <h4 className="text-yellow-400 font-medium">Security Notice</h4>
-              <p className="text-gray-400 mt-1">
-                Anyone with physical access to the QR code can scan it and prove
-                they were at that location. This is intentional - it allows
-                users to claim rewards by physically visiting locations.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
