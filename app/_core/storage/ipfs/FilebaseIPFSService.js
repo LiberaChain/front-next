@@ -52,7 +52,7 @@ export class FilebaseIPFSProvider {
             apiEndpoint: isConnected ? `http://${host}:${apiPort}` : "none",
             nodeType: isConnected ? "IPFS Node" : "Local Mock",
             health: isConnected ? "healthy" : "simulated",
-            storageCount: isConnected ? null : getLocalStorageItemCount(),
+            storageCount: isConnected ? null : "0",
             state: isConnected ? "IPNS Enabled" : "Local Only",
         };
     }

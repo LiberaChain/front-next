@@ -1,174 +1,260 @@
 "use client";
 
-import IPFSCIDLink from "@/app/_components/IPFSCIDLink";
-import { BarcodeIcon, QrCodeIcon } from "@phosphor-icons/react";
 import { useState, useEffect } from "react";
+import { FilebaseIPFSProvider } from "@/app/_core/storage/ipfs/FilebaseIPFSService";
+import IPFSCIDLink from "@/app/_components/IPFSCIDLink";
+import {
+  CheckCircleIcon,
+  ClockCounterClockwise,
+  InfoIcon,
+  LinkSimple,
+} from "@phosphor-icons/react";
 
-export default function ObjectsList({ onObjectSelect, refreshTrigger }) {
-  const [userObjects, setUserObjects] = useState([]);
+export default function CollectedObjectsList() {
+  const [redeemedObjects, setRedeemedObjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const loadUserObjects = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Full user objects are stored for now only on device inside localStorage, they are still published to IPFS/blockchain for other side validation, but private key stays on device
-      let objects = localStorage.getItem("liberaChainObjects");
-      objects = objects ? JSON.parse(objects) : [];
-
-      console.debug("Loaded user objects from localStorage:", objects);
-
-      // Get user's address
-      // const userAddress = await liberaService.signer.getAddress();
-
-      // Load objects using the service
-      // const objects = await objectsService.getUserObjects(userAddress);
-
-      setUserObjects(objects);
-    } catch (error) {
-      console.error("Failed to load objects:", error);
-      setError("Failed to load your objects. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
   useEffect(() => {
-    loadUserObjects();
+    async function loadRedeemedObjects() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Get user's profile data
+        const userProfileData = localStorage.getItem("liberaChainIdentity");
+        if (!userProfileData) {
+          throw new Error("User profile not found");
+        }
+
+        const userProfile = JSON.parse(userProfileData);
+        const userAddress = userProfile.did?.replace("did:libera:", "") || "";
+
+        if (!userAddress) {
+          throw new Error("Invalid user profile");
+        }
+
+        // Load redemption records from localStorage first (for offline mode)
+        let redemptions = localStorage.getItem("liberaChainRedemptions");
+        redemptions = redemptions ? JSON.parse(redemptions) : [];
+
+        // Prepare an array to store the full object data
+        const objectsWithDetails = [];
+
+        // Connect to IPFS
+        const ipfs = FilebaseIPFSProvider.getInstance();
+
+        // Fetch redemption records from user's profile directory on IPFS
+        try {
+          const userRedemptionsPath = `redemptions/${userProfile.did}`;
+          const redemptionFiles = await ipfs.listDirectory(userRedemptionsPath);
+
+          // Process each redemption file
+          for (const file of redemptionFiles) {
+            try {
+              // Get the redemption record
+              const cid = await ipfs.getLatestCID(file.Key);
+
+              if (cid) {
+                const response = await ipfs.fetchFileByCID(cid);
+                if (response) {
+                  // Parse the redemption record
+                  const redemptionRecord = JSON.parse(await response.text());
+
+                  // Get the object DID from the redemption record
+                  const objectDid = redemptionRecord.objectDid;
+                  const objectAddress = objectDid.replace(
+                    "did:libera:object:",
+                    ""
+                  );
+
+                  // Fetch the object's details
+                  const objectFilePath = `objects/${objectAddress}.json`;
+                  const objectExists = await ipfs.fileExists(objectFilePath);
+
+                  if (objectExists) {
+                    const objectCid = await ipfs.getLatestCID(objectFilePath);
+                    const objectResponse = await ipfs.fetchFileByCID(objectCid);
+
+                    if (objectResponse) {
+                      // Parse the object data
+                      const objectData = JSON.parse(
+                        await objectResponse.text()
+                      );
+
+                      // Add this object with redemption details to our list
+                      objectsWithDetails.push({
+                        ...objectData,
+                        redemptionDate: redemptionRecord.timestamp,
+                        redemptionSignature: redemptionRecord.signature,
+                        cid: objectCid,
+                      });
+                    }
+                  } else {
+                    // Object details not found, just add what we have from the redemption
+                    objectsWithDetails.push({
+                      did: objectDid,
+                      name: "Unknown Object",
+                      description: "Object details not found",
+                      redemptionDate: redemptionRecord.timestamp,
+                      redemptionSignature: redemptionRecord.signature,
+                      cid: null,
+                    });
+                  }
+                }
+              }
+            } catch (fileError) {
+              console.error("Error processing redemption file:", fileError);
+            }
+          }
+        } catch (ipfsError) {
+          console.error("Error fetching redemptions from IPFS:", ipfsError);
+
+          // If IPFS fetch fails, use local data only
+          for (const redemption of redemptions) {
+            objectsWithDetails.push({
+              did: redemption.objectDid,
+              name: redemption.objectName || "Unknown Object",
+              description: "Local record only",
+              redemptionDate: redemption.timestamp,
+              redemptionSignature: redemption.signature,
+              verification: "Local only",
+              cid: redemption.cid,
+            });
+          }
+        }
+
+        // Sort by redemption date, newest first
+        objectsWithDetails.sort(
+          (a, b) => new Date(b.redemptionDate) - new Date(a.redemptionDate)
+        );
+
+        setRedeemedObjects(objectsWithDetails);
+      } catch (error) {
+        console.error("Failed to load redeemed objects:", error);
+        setError(error.message || "Failed to load your redeemed objects");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadRedeemedObjects();
   }, []);
 
-  useEffect(() => {
-    if (refreshTrigger > 0) {
-      loadUserObjects();
-    }
-  }, [refreshTrigger]);
-
-  const handleInteract = async (objectId) => {
-    try {
-      onObjectSelect(objectId);
-    } catch (error) {
-      console.error("Failed to initiate interaction:", error);
-      setError("Failed to start interaction. Please try again.");
-    }
+  // Function to shorten signature for display
+  const shortenSignature = (signature) => {
+    if (!signature) return "N/A";
+    return `${signature.slice(0, 6)}...${signature.slice(-4)}`;
   };
 
   return (
     <div className="bg-gray-800 rounded-lg shadow p-6 border border-gray-700">
       <h2 className="text-lg font-medium text-white mb-4">
-        <em>Objects, locations, events, ...</em> created by You
+        Your Redeemed Objects
       </h2>
 
-      <div className="space-y-4">
-        {userObjects?.length === 0 && (
-          <>
-            <p className="text-sm text-gray-400">
-              You have not created any locations or objects yet.
-            </p>
-            <p className="text-sm text-gray-400">
-              An example how one looks like:
-            </p>
-            <div className="bg-gray-700 rounded-lg p-4 border border-gray-600 opacity-60">
-              <div className="flex justify-between">
+      {error && (
+        <div className="mb-4 rounded-md bg-red-900/40 p-4">
+          <div className="text-sm text-red-400">{error}</div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="py-8 text-center text-gray-400">
+          <div className="inline-block animate-spin h-8 w-8 border-4 border-gray-500 border-t-emerald-500 rounded-full mb-2"></div>
+          <p>Loading redeemed objects...</p>
+        </div>
+      ) : redeemedObjects.length === 0 ? (
+        <div className="py-8 text-center text-gray-400 border border-dashed border-gray-600 rounded-lg">
+          <ClockCounterClockwise className="h-8 w-8 mx-auto mb-2" />
+          <p>You haven't redeemed any objects yet.</p>
+          <p className="text-sm mt-2">
+            Scan QR codes or use redemption links to collect objects.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {redeemedObjects.map((object, index) => (
+            <div
+              key={`${object.did}-${index}`}
+              className="bg-gray-700 p-4 rounded-lg border border-gray-600"
+            >
+              <div className="flex justify-between items-start">
                 <div>
-                  <h4 className="text-emerald-400 font-medium">
-                    Example Location
-                  </h4>
-                  <p className="text-xs text-gray-400">Type: Location</p>
+                  <div className="flex items-center">
+                    <CheckCircleIcon className="h-5 w-5 text-emerald-500 mr-2" />
+                    <h3 className="font-medium text-emerald-400">
+                      {object.name || "Unknown Object"}
+                    </h3>
+                  </div>
 
-                  <p className="text-xs text-gray-400">
-                    Coordinates: 123.456, -78.910
+                  <p className="text-sm text-gray-300 mt-1">
+                    {object.description || "No description available"}
                   </p>
-                  <p className="text-xs text-emerald-500">
-                    Reward: 10% discount after 5 visits
-                  </p>
+
+                  <div className="flex items-center mt-2 space-x-2">
+                    <span className="px-2 py-1 bg-gray-800 text-xs rounded-full text-emerald-400 capitalize">
+                      {object.type || "Object"}
+                    </span>
+
+                    {object.redemptionDate && (
+                      <span className="px-2 py-1 bg-gray-800 text-xs rounded-full text-gray-300">
+                        Redeemed:{" "}
+                        {new Date(object.redemptionDate).toLocaleDateString()}
+                      </span>
+                    )}
+
+                    {object.reward && (
+                      <span className="px-2 py-1 bg-emerald-900/40 text-xs rounded-full text-emerald-300">
+                        {object.reward}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs text-gray-500">
-                    Created: {new Date().toLocaleDateString()}
-                  </p>
-                </div>
               </div>
 
-              <div className="mt-2 text-xs text-gray-500 break-all">
-                DID: did:libera:object:1234567890...
-              </div>
-
-              <div className="mt-2 flex justify-end">
-                <button
-                  className="bg-emerald-500 text-white text-sm px-4 py-2 rounded hover:bg-emerald-600 transition-colors"
-                  disabled
-                >
-                  <QrCodeIcon size={20} className="inline mr-1 mb-1" />
-                  Reveal QR Code
-                </button>
-                <button
-                  className="ml-2 bg-gray-600 text-white text-sm px-4 py-2 rounded hover:bg-gray-700 transition-colors"
-                  disabled
-                >
-                  <BarcodeIcon size={20} className="inline mr-1 mb-1" />
-                  Enable code scanner
-                </button>
+              <div className="mt-3 pt-3 border-t border-gray-600">
+                <details className="text-xs">
+                  <summary className="text-emerald-400 cursor-pointer">
+                    Verification Details
+                  </summary>
+                  <div className="mt-2 pl-2 border-l-2 border-gray-600 space-y-1">
+                    <p className="text-gray-400">
+                      <span className="text-gray-500">Object ID:</span>{" "}
+                      {object.did}
+                    </p>
+                    <p className="text-gray-400">
+                      <span className="text-gray-500">Redeemed:</span>{" "}
+                      {new Date(object.redemptionDate).toLocaleString()}
+                    </p>
+                    <p className="text-gray-400">
+                      <span className="text-gray-500">Signature:</span>{" "}
+                      {shortenSignature(object.redemptionSignature)}
+                    </p>
+                    {object.cid && (
+                      <p className="text-gray-400">
+                        <span className="text-gray-500">IPFS:</span>{" "}
+                        <IPFSCIDLink cid={object.cid} />
+                      </p>
+                    )}
+                  </div>
+                </details>
               </div>
             </div>
-          </>
-        )}
-        {userObjects?.map((object) => (
-          <div
-            key={object.did}
-            className="bg-gray-700 rounded-lg p-4 border border-gray-600"
-          >
-            <div className="flex justify-between">
-              <div>
-                <h4 className="text-emerald-400 font-medium">{object.name}</h4>
-                <p className="text-xs text-gray-400">Type: {object.type}</p>
-                {object.coordinates && (
-                  <p className="text-xs text-gray-400">
-                    Coordinates: {object.coordinates}
-                  </p>
-                )}
-                {object.reward && (
-                  <p className="text-xs text-emerald-500">
-                    Reward: {object.reward}
-                  </p>
-                )}
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">
-                  Created: {new Date(object.timestamp).toLocaleDateString()}
-                </p>
-              </div>
-            </div>
+          ))}
 
-            <div className="mt-2 text-xs text-gray-500 break-all">
-              DID: {object.did}
-              <br />
-              {object.cid && (
-                <span className="block">
-                  IPFS CID: <IPFSCIDLink cid={object.cid} />
-                </span>
-              )}
-            </div>
-
-            <div className="mt-2 flex justify-end">
-              <button
-                className="bg-emerald-500 text-white text-sm px-4 py-2 rounded hover:bg-emerald-600 transition-colors"
-                onClick={() => toggleQR(object.id)}
-              >
-                <QrCodeIcon size={20} className="inline mr-1 mb-1" />
-                Reveal QR Code
-              </button>
-              <button
-                className="ml-2 bg-gray-600 text-white text-sm px-4 py-2 rounded hover:bg-gray-700 transition-colors"
-                onClick={() => toggleScanner(object.id)}
-              >
-                <BarcodeIcon size={20} className="inline mr-1 mb-1" />
-                Enable code scanner
-              </button>
+          <div className="mt-4 flex items-start bg-gray-750 rounded-lg p-4 border border-gray-650">
+            <InfoIcon className="h-5 w-5 text-blue-400 mr-2 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-gray-400">
+              <p>
+                All redeemed objects contain cryptographic proof of your
+                interaction. These proofs are stored in your decentralized
+                identity and can be verified by anyone.
+              </p>
             </div>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

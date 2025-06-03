@@ -160,7 +160,7 @@ export default function ObjectsList({ onObjectSelect, refreshTrigger }) {
             </div>
 
             <RevealableQR
-              qrData={`${INSTANCE_URL}/objects?redeem=${encodeURIComponent(
+              qrData={`${INSTANCE_URL}/objects/redeem?redeem=${encodeURIComponent(
                 object.did
               )}&key=${encodeURIComponent(object.privateKey)}`}
               image="/logo-dark.svg"

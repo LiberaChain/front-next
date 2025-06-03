@@ -101,7 +101,7 @@ export default function DashboardPage() {
                 console.log("IPFS Profile Data:", profile);
                 setIpfsProfile(profile);
 
-                const pendingFriendRequests = await Friendships.getPendingRequests(
+                const pendingFriendRequests = await Friendships.getPendingRequestsDids(
                     profileData.did
                 );
                 console.log("Pending Friend Requests:", pendingFriendRequests);

@@ -7,6 +7,7 @@ import ObjectsExplanation from "./_components/ObjectsExplanation";
 import ObjectInteraction from "@components/ObjectInteraction";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import CollectedObjectsList from "./_components/CollectedObjectsList";
 
 // export const metadata = {
 //   title: "Objects",
@@ -43,6 +44,7 @@ export default function ObjectsPage() {
                 <ObjectInteraction objectId={selectedObjectId} />
             )}
             <ObjectsList onObjectSelect={handleObjectSelect} refreshTrigger={refreshTrigger} />
+            <CollectedObjectsList />
         </AuthenticatedContentWrapper>
     );
 }

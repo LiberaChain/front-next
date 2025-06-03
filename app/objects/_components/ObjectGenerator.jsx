@@ -371,7 +371,10 @@ export default function ObjectGenerator({ refreshObjectsList }) {
               Name: <span className="text-emerald-400">{objectName}</span>
             </p>
             <p>
-              Object ID: <span className="text-emerald-400">{objectId}</span>
+              Object ID:{" "}
+              <span className="text-emerald-400">
+                {objectId.slice(0, 10)}...{objectId.slice(-10)}
+              </span>
             </p>
             {coordinates && (
               <p>
