@@ -5,10 +5,14 @@ import { FilebaseIPFSProvider } from "@/app/_core/storage/ipfs/FilebaseIPFSServi
 import IPFSCIDLink from "@/app/_components/IPFSCIDLink";
 import {
   CheckCircleIcon,
+  CircleNotchIcon,
   ClockCounterClockwise,
   InfoIcon,
   LinkSimple,
 } from "@phosphor-icons/react";
+import Link from "next/link";
+import RevealableQR from "@/app/_components/RevealableQR";
+import { INSTANCE_URL } from "@/app/_core/constants";
 
 export default function CollectedObjectsList() {
   const [redeemedObjects, setRedeemedObjects] = useState([]);
@@ -87,6 +91,7 @@ export default function CollectedObjectsList() {
                         ...objectData,
                         redemptionDate: redemptionRecord.timestamp,
                         redemptionSignature: redemptionRecord.signature,
+                        redemptionCid: cid,
                         cid: objectCid,
                       });
                     }
@@ -118,6 +123,7 @@ export default function CollectedObjectsList() {
               description: "Local record only",
               redemptionDate: redemption.timestamp,
               redemptionSignature: redemption.signature,
+              redemptionCid: redemption.cid,
               verification: "Local only",
               cid: redemption.cid,
             });
@@ -159,6 +165,20 @@ export default function CollectedObjectsList() {
         </div>
       )}
 
+      <div className="mb-4 flex items-center space-x-2">
+        <Link
+          className="text-sm text-emerald-400 hover:underline"
+          href="/objects/redeem"
+        >
+          Redeem more objects
+        </Link>
+      </div>
+
+      <div className="text-sm text-gray-400 mb-4">
+        You can view all objects you have redeemed through QR codes or links.
+        Each object contains cryptographic proof of your interaction.
+      </div>
+
       {loading ? (
         <div className="py-8 text-center text-gray-400">
           <div className="inline-block animate-spin h-8 w-8 border-4 border-gray-500 border-t-emerald-500 rounded-full mb-2"></div>
@@ -166,7 +186,7 @@ export default function CollectedObjectsList() {
         </div>
       ) : redeemedObjects.length === 0 ? (
         <div className="py-8 text-center text-gray-400 border border-dashed border-gray-600 rounded-lg">
-          <ClockCounterClockwise className="h-8 w-8 mx-auto mb-2" />
+          <CircleNotchIcon className="h-8 w-8 mx-auto mb-2" />
           <p>You haven't redeemed any objects yet.</p>
           <p className="text-sm mt-2">
             Scan QR codes or use redemption links to collect objects.
@@ -210,6 +230,17 @@ export default function CollectedObjectsList() {
                       </span>
                     )}
                   </div>
+
+                  <RevealableQR
+                    className="mt-3"
+                    qrData={`${INSTANCE_URL}/objects/verify?did=${encodeURIComponent(
+                      object.did
+                    )}&signature=${encodeURIComponent(
+                      object.redemptionSignature
+                    )}&cid=${encodeURIComponent(object.redemptionCid)}`}
+                    buttonShowText="Show proof QR code"
+                    buttonHideText="Hide proof QR code"
+                  />
                 </div>
               </div>
 

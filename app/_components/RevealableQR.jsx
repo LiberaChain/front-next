@@ -13,6 +13,9 @@ export default function RevealableQR({
   onReveal = () => {},
   onHide = () => {},
   shouldReveal = false,
+  buttonShowText = "Reveal QR code",
+  buttonHideText = "Hide QR code",
+  buttonSize = "small", // 'small' or 'large'
   displayDurationSeconds = 15, // Default to 15 seconds
 }) {
   const [isRevealed, setIsRevealed] = useState(false);
@@ -51,10 +54,13 @@ export default function RevealableQR({
       {showButton && (
         <button
           onClick={toggleReveal}
-          className="text-xs px-3 text-emerald-400 hover:text-emerald-300 flex items-center outline focus:outline-none focus:ring-2 focus:ring-emerald-500 rounded-md p-1 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          className={`text-emerald-400 hover:text-emerald-300 flex items-center outline focus:outline-none focus:ring-2 focus:ring-emerald-500 rounded-md transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed
+            ${
+              buttonSize === "small" ? "p-1 text-xs px-3" : "p-2 text-sm px-3"
+            }`}
         >
           <QrCodeIcon className="h-4 w-4 mr-1" weight="bold" />
-          {isRevealed ? "Hide QR code" : "Reveal QR code"}
+          {isRevealed ? buttonHideText : buttonShowText}
         </button>
       )}
 
@@ -77,7 +83,8 @@ export default function RevealableQR({
             Scan with any camera app or within the LiberaChat.{" "}
             {footnote && <span className="text-gray-500">{footnote}</span>}
             <br />
-            {qrData?.startsWith("https://") && (
+            {(qrData?.startsWith("https://") ||
+              qrData?.startsWith("http://")) && (
               <>
                 Unable to scan code? You could try using{" "}
                 <a href={qrData} className="text-emerald-500 hover:underline">

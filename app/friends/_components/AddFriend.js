@@ -1,3 +1,4 @@
+import QRScanner from "@/app/_components/QRScanner";
 import RevealableQR from "@/app/_components/RevealableQR";
 import { INSTANCE_URL } from "@/app/_core/constants";
 import { useState, useRef } from "react";
@@ -15,10 +16,13 @@ export default function AddFriend({
     onSendRequest,
     onScanQR,
     onShowQR,
-    showQrScanner,
+    // showQrScanner,
     showQrCode,
     ipfsStatus,
 }) {
+    const [showQrScanner, setShowQrScanner] = useState(false);
+    const [scanError, setScanError] = useState(null);
+
     const scannerRef = useRef(null);
 
     return (
@@ -92,6 +96,53 @@ export default function AddFriend({
 
                 {/* QR Code Actions */}
                 <div className="flex space-x-4 mt-4">
+                    <div className="flex-1">
+                        <QRScanner
+                            className="w-full"
+                            hideAfterScan={true}
+                            onScan={(result) => {
+                                if (!result || result.length === 0) {
+                                    setScanError("No QR code detected. Please try again.");
+                                    return;
+                                }
+
+                                setScanError(null);
+
+                                const value = result[0]?.rawValue;
+                                const format = result[0]?.format;
+                                console.log("QR Code Scanned:", value, format, result);
+
+                                console.log(typeof value, value);
+
+                                const cleanValue = `${value}`.trim();
+                                if (!cleanValue || (!cleanValue.startsWith("https://") && !cleanValue.startsWith("http://"))) {
+                                    setScanError("Invalid QR code format. Please scan a valid friend request code.");
+                                    return;
+                                }
+
+                                if (!value.includes("/friends?addFriend=did")) {
+                                    setScanError("The QR code does not contain a valid friend request information.");
+                                    return;
+                                }
+
+                                // Extract the DID from the URL
+                                const url = new URL(value);
+                                const params = new URLSearchParams(url.search);
+                                const did = decodeURIComponent(params.get("addFriend"));
+
+                                setSearchQuery(did);
+                            }}
+                        />
+
+                        {scanError && (
+                            <div className="mt-2 text-red-500 text-sm">
+                                Error scanning QR code: {scanError}
+                            </div>
+                        )}
+                    </div>
+                </div>
+                {/* 
+                <div className="flex space-x-4 mt-4">
                     <button
                         onClick={onScanQR}
                         disabled={true}
@@ -99,7 +150,7 @@ export default function AddFriend({
                     >
                         {showQrScanner ? "Stop Scanning" : "Scan QR Code"}
                     </button>
-                </div>
+                </div> */}
 
                 <div className="flex space-x-4 mt-4">
                     <RevealableQR
@@ -110,7 +161,7 @@ export default function AddFriend({
                 </div>
 
                 {/* QR Scanner */}
-                {showQrScanner && (
+                {/* {showQrScanner && (
                     <div className="mt-4 p-4 bg-gray-700 rounded-lg">
                         <div className="flex justify-between items-center mb-2">
                             <h3 className="text-sm font-medium text-white">Scan QR Code</h3>
@@ -144,7 +195,7 @@ export default function AddFriend({
                             Point your camera at a friend&apos;s QR code to add them
                         </p>
                     </div>
-                )}
+                )} */}
             </div>
 
             {/* Search Results */}

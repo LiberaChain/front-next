@@ -1,10 +1,12 @@
 "use client";
 
 import IPFSCIDLink from "@/app/_components/IPFSCIDLink";
+import QRScanner from "@/app/_components/QRScanner";
 import RevealableQR from "@/app/_components/RevealableQR";
 import { INSTANCE_URL } from "@/app/_core/constants";
 import { BarcodeIcon, QrCodeIcon } from "@phosphor-icons/react";
 import { useState, useEffect } from "react";
+import ObjectItem from "./ObjectItem";
 
 export default function ObjectsList({ onObjectSelect, refreshTrigger }) {
   const [userObjects, setUserObjects] = useState([]);
@@ -116,57 +118,7 @@ export default function ObjectsList({ onObjectSelect, refreshTrigger }) {
           </>
         )}
         {userObjects?.map((object) => (
-          <div
-            key={object.did}
-            className="bg-gray-700 rounded-lg p-4 border border-gray-600"
-          >
-            <div className="flex justify-between">
-              <div>
-                <h4 className="text-emerald-400 font-medium">{object.name}</h4>
-                <p className="text-xs text-gray-400">Type: {object.type}</p>
-                {object.coordinates && (
-                  <p className="text-xs text-gray-400">
-                    Coordinates: {object.coordinates}
-                  </p>
-                )}
-                {object.reward && (
-                  <p className="text-xs text-emerald-500">
-                    Reward: {object.reward}
-                  </p>
-                )}
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">
-                  Created: {new Date(object.timestamp).toLocaleDateString()}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-2 text-xs text-gray-500 break-all">
-              DID: {object.did}
-              <br />
-              {object.cid && (
-                <span className="block">
-                  IPFS CID: <IPFSCIDLink cid={object.cid} />
-                </span>
-              )}
-            </div>
-
-            <div className="mt-2 flex">
-              <button className="bg-gray-600 text-white text-sm px-4 py-2 rounded hover:bg-gray-700 transition-colors">
-                <BarcodeIcon size={20} className="inline mr-1 mb-1" />
-                Enable code scanner
-              </button>
-            </div>
-
-            <RevealableQR
-              qrData={`${INSTANCE_URL}/objects/redeem?redeem=${encodeURIComponent(
-                object.did
-              )}&key=${encodeURIComponent(object.privateKey)}`}
-              image="/logo-dark.svg"
-              className="mt-4"
-            />
-          </div>
+          <ObjectItem key={object.did} object={object} />
         ))}
       </div>
     </div>

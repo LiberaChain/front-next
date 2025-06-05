@@ -30,6 +30,7 @@
     "@libp2p/websockets": "^9.2.10",
     "@phosphor-icons/react": "^2.1.10",
     "@scure/bip39": "^1.6.0",
+    "@yudiel/react-qr-scanner": "^2.3.1",
     "aws-sdk": "^2.1692.0",
     "axios": "^1.8.4",
     "did-resolver": "^4.1.0",

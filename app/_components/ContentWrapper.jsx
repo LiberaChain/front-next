@@ -7,7 +7,12 @@ import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
-export default function ContentWrapper({ children, title }) {
+export default function ContentWrapper({
+  children,
+  title,
+  className = null,
+  ...props
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const { isAuthenticated, _ } = useIsAuthenticated();
@@ -50,7 +55,13 @@ export default function ContentWrapper({ children, title }) {
         )}
       </Header>
 
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+      <main
+        className={
+          className ??
+          "max-w-7xl mx-auto py-6 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-3 gap-6 "
+        }
+        {...props}
+      >
         {children}
       </main>
     </div>

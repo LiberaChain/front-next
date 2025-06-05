@@ -7,12 +7,15 @@ import { ethers } from "ethers";
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ArrowRightIcon, CheckCircleIcon, CircleNotchIcon, MapPinIcon, QrCodeIcon, WarningIcon } from "@phosphor-icons/react";
+import QRScanner from "@/app/_components/QRScanner";
 
 export default function RedeemObjectPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const redeemCode = searchParams.get('redeem');
-    const key = searchParams.get('key');
+    const [redeemCode, setRedeemCode] = useState(searchParams.get('redeem') || null);
+    // const redeemCode = searchParams.get('redeem');
+    const [key, setKey] = useState(searchParams.get('key') || null);
+    // const key = searchParams.get('key');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [object, setObject] = useState(null);
@@ -22,8 +25,10 @@ export default function RedeemObjectPage() {
     // Load object data from IPFS based on DID in the URL
     useEffect(() => {
         async function loadObjectData() {
+            setError(null);
+
             if (!redeemCode || !key) {
-                setError("Missing redeem code or key in the URL");
+                // setError("Missing redeem code or key in the URL");
                 setLoading(false);
                 return;
             }
@@ -171,9 +176,45 @@ export default function RedeemObjectPage() {
         router.push('/objects');
     };
 
+    const handleCodeScan = (result) => {
+        console.log("QR Code scanned:", result);
+        let scannedCode = result[0]?.rawValue;
+        if (!scannedCode) {
+            setError("No valid QR code detected. Please try again.");
+            return;
+        }
+
+        scannedCode = `${scannedCode}`.trim();
+        console.log("Scanned QR Code:", scannedCode);
+        if (!scannedCode.startsWith("http://") && !scannedCode.startsWith("https://")) {
+            setError("Invalid QR code format. Please scan a valid object QR code.");
+            return;
+        }
+
+        if (!scannedCode.includes("/objects/redeem?")) {
+            setError("The QR code is not meant for redeeming objects.");
+            return;
+        }
+
+        const url = new URL(scannedCode);
+        const redeemParam = url.searchParams.get("redeem");
+        const keyParam = url.searchParams.get("key");
+        if (!redeemParam || !keyParam || !redeemParam.startsWith("did:libera:object:")) {
+            setError("The QR code does not contain valid redeem parameters.");
+            return;
+        }
+
+        console.log("Parsed redeem code:", redeemParam, "Key:", keyParam);
+
+        setKey(keyParam);
+        setRedeemCode(redeemParam);
+        setLoading(true);
+        setError(null);
+    }
+
     return (
-        <AuthenticatedContentWrapper title="Redeem Object">
-            <div className="mx-auto">
+        <AuthenticatedContentWrapper title="Redeem Object" className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8 grid grid-cols-1 gap-6">
+            <div className="mx-auto md:col-span-2 space-y-6">
                 {/* Loading State */}
                 {loading && (
                     <div className="bg-gray-800 rounded-lg p-8 border border-gray-700 text-center">
@@ -195,6 +236,37 @@ export default function RedeemObjectPage() {
                             <button
                                 onClick={handleReturnHome}
                                 className="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-600 transition-colors"
+                            >
+                                Return to Objects
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {!object && (!redeemCode || !key) && (
+                    <div className="bg-gray-800 rounded-lg p-8 border border-gray-700">
+                        <div className="flex items-center justify-center mb-6">
+                            <QrCodeIcon className="w-16 h-16 text-emerald-500" />
+                        </div>
+                        <h2 className="text-xl font-medium text-emerald-400 mb-4 text-center">Redeem an Object</h2>
+                        <p className="text-gray-300 text-center mb-2">
+                            You can use your camera to scan the QR code of an object to redeem it.
+                        </p>
+                        <p className="text-gray-400 text-center mb-6">
+                            Alternative to that is to use the link that is embedded into the QR code.
+                        </p>
+                        <div className="flex justify-center my-6">
+                            <div className="flex-1">
+                                <QRScanner
+                                    hideAfterScan={true}
+                                    onScan={handleCodeScan}
+                                />
+                            </div>
+                        </div>
+                        <div className="flex justify-center">
+                            <button
+                                onClick={handleReturnHome}
+                                className="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 transition-colors"
                             >
                                 Return to Objects
                             </button>

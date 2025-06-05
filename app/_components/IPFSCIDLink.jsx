@@ -1,5 +1,5 @@
 export default function IPFSCIDLink({ cid, children }) {
-  if (!cid) {
+  if (!cid || typeof cid !== "string" || !cid.match(/^[a-zA-Z0-9]{46}$/)) {
     return <span className="text-red-500">Invalid CID</span>;
   }
 
@@ -12,7 +12,7 @@ export default function IPFSCIDLink({ cid, children }) {
       rel="noopener noreferrer"
       className="text-blue-400 hover:underline opacity-60"
     >
-      {children || cid.slice(0, 6) + '...' + cid.slice(-4)}
+      {children || cid.slice(0, 6) + "..." + cid.slice(-4)}
     </a>
   );
 }
